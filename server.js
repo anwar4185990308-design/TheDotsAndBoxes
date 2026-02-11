@@ -1,90 +1,109 @@
 const express = require('express');
-const { MongoClient } = require('mongodb');
+const mongoose = require('mongoose');
 const cors = require('cors');
-const path = require('path');
-
 const app = express();
+
+// --- MIDDLEWARE ---
 app.use(express.json());
 app.use(cors());
-app.use(express.static('./'));
 
-// CONFIG: Replace with your actual MongoDB URI
-const uri = "mongodb+srv://anamuyt66tt_db_user:wbEIKDFt6Fl8YSAO@cluster0.my8z8ya.mongodb.net/?appName=Cluster0";
-const client = new MongoClient(uri);
+// --- MONGODB CONNECTION ---
+// Replace the URI with your actual MongoDB Connection String
+const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://anamuyt66tt_db_user:wbEIKDFt6Fl8YSAO@cluster0.my8z8ya.mongodb.net/?appName=Cluster0";
+mongoose.connect(MONGO_URI)
+    .then(() => console.log("CORE_DATABASE: LINKED"))
+    .catch(err => console.error("CORE_DATABASE: LINK_FAILURE", err));
 
-async function initDB() {
-    try {
-        await client.connect();
-        console.log(">> TITAN_OS: DATABASE_LINK_ESTABLISHED");
-    } catch (e) { console.error("LINK_FAILURE", e); }
-}
-initDB();
-
-// --- AUTH: SIGNUP ---
-app.post('/signup', async (req, res) => {
-    const { username, password } = req.body;
-    const db = client.db("Titan-OS");
-    const users = db.collection("users");
-
-    const exists = await users.findOne({ username });
-    if (exists) return res.json({ success: false, message: "ID_ALREADY_RESERVED" });
-
-    const newUser = {
-        username,
-        password, // Stored as plain text per request
-        files: {
-            levels: 1,
-            coin: 0,
-            wins: 0,
-            streak: 0,
-            xp: 0
-        }
-    };
-
-    await users.insertOne(newUser);
-    res.json({ success: true, data: newUser });
+// --- USER SCHEMA ---
+const userSchema = new mongoose.Schema({
+    username: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    files: {
+        levels: { type: Number, default: 1 },
+        coin: { type: Number, default: 500 },
+        wins: { type: Number, default: 0 },
+        streak: { type: Number, default: 0 },
+        xp: { type: Number, default: 0 }
+    }
 });
 
-// --- AUTH: LOGIN ---
+const User = mongoose.model('User', userSchema);
+
+// --- ROUTES ---
+
+// 1. LEADERBOARD ENDPOINT (The fix for your error)
+app.get('/leaderboard', async (req, res) => {
+    try {
+        // Sort by level (descending) then by wins (descending)
+        const topPilots = await User.find({}, 'username files')
+            .sort({ "files.levels": -1, "files.wins": -1 })
+            .limit(10);
+        
+        // Flatten the data for easier frontend consumption
+        const formatted = topPilots.map(p => ({
+            username: p.username,
+            level: p.files.levels,
+            wins: p.files.wins
+        }));
+
+        res.json(formatted);
+    } catch (err) {
+        res.status(500).json({ success: false, message: "DATABASE_QUERY_ERROR" });
+    }
+});
+
+// 2. GET PROFILE
+app.get('/get-profile/:username', async (req, res) => {
+    try {
+        const user = await User.findOne({ username: req.params.username });
+        if (user) {
+            res.json({ success: true, data: user.files });
+        } else {
+            res.status(404).json({ success: false, message: "PILOT_NOT_FOUND" });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false });
+    }
+});
+
+// 3. SAVE PROGRESS
+app.post('/save-progress', async (req, res) => {
+    const { username, stats } = req.body;
+    try {
+        await User.findOneAndUpdate(
+            { username: username },
+            { $set: { 
+                "files.levels": stats.level,
+                "files.coin": stats.coins,
+                "files.wins": stats.wins,
+                "files.streak": stats.streak,
+                "files.xp": stats.xp
+            }}
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ success: false });
+    }
+});
+
+// 4. AUTH ROUTES (Login/Signup - Simplified)
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
-    const db = client.db("Titan-OS");
-    const user = await db.collection("users").findOne({ username, password });
-
+    const user = await User.findOne({ username, password });
     if (user) res.json({ success: true, data: user });
     else res.json({ success: false, message: "INVALID_CREDENTIALS" });
 });
 
-// --- DATA: GET PROFILE ---
-app.get('/get-profile/:username', async (req, res) => {
-    const db = client.db("Titan-OS");
-    const user = await db.collection("users").findOne({ username: req.params.username });
-    if (user) res.json({ success: true, data: user.files });
-    else res.json({ success: false });
-});
-
-// --- DATA: SAVE (The "Virtual File" Writer) ---
-app.post('/save-progress', async (req, res) => {
-    const { username, data } = req.body;
-    const db = client.db("Titan-OS");
-
+app.post('/signup', async (req, res) => {
+    const { username, password } = req.body;
     try {
-        await db.collection("users").updateOne(
-            { username: username },
-            { 
-                $set: { 
-                    "files.levels": data.level,
-                    "files.coin": data.coins,
-                    "files.wins": data.wins,
-                    "files.streak": data.streak,
-                    "files.xp": data.xp
-                } 
-            }
-        );
-        res.json({ success: true });
-    } catch (err) { res.status(500).json({ success: false }); }
+        const newUser = new User({ username, password, files: { levels: 1, coin: 500, wins: 0, streak: 0, xp: 0 } });
+        await newUser.save();
+        res.json({ success: true, data: newUser });
+    } catch (err) {
+        res.json({ success: false, message: "ID_ALREADY_EXISTS" });
+    }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`TITAN_OS_ONLINE_ON_${PORT}`));
-
+app.listen(PORT, () => console.log(`TITAN_OS_SERVER: ACTIVE ON PORT ${PORT}`));

@@ -1,133 +1,69 @@
-/**
- * TITAN_OS // ACCOUNT_SYSTEM_CORE
- * Primary bridge for Authentication and Data Persistence.
- */
-
 const AccountSystem = {
-    // UPDATED: Pointing to your live Render server instead of localhost
-    BASE_URL: 'https://thedotsandboxes.onrender.com',
+    // Determine if we are running locally or on Render
+    API_BASE: window.location.origin,
 
-    /**
-     * AUTHENTICATION: LOGIN
-     * Verification of Pilot Credentials
-     */
-    async login(username, password) {
-        console.log(`>> INITIATING_LINK: ${username}...`);
+    // LOGIN SYSTEM
+    login: async (username, password) => {
         try {
-            const response = await fetch(`${this.BASE_URL}/login`, {
+            const response = await fetch(`${AccountSystem.API_BASE}/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
-
             const result = await response.json();
+            if (result.success) {
+                // Store nested files in session for the Hub
+                sessionStorage.setItem('titan_user', result.data.username);
+                sessionStorage.setItem('titan_data', JSON.stringify({
+                    level: result.data.files.levels,
+                    coins: result.data.files.coin,
+                    wins: result.data.files.wins,
+                    streak: result.data.files.streak
+                }));
+            }
+            return result;
+        } catch (e) {
+            return { success: false, message: "SERVER_OFFLINE" };
+        }
+    },
+
+    // SIGNUP SYSTEM
+    signup: async (username, password) => {
+        const response = await fetch(`${AccountSystem.API_BASE}/signup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        return await response.json();
+    },
+
+    // SAVE SYSTEM (Updates the virtual .txt files)
+    saveProgress: async (username, stats) => {
+        try {
+            const response = await fetch(`${AccountSystem.API_BASE}/save-progress`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: username,
+                    data: {
+                        level: stats.level,
+                        coins: stats.coins,
+                        wins: stats.wins,
+                        streak: stats.streak
+                    }
+                })
+            });
             
-            if (result.success) {
-                console.log(">> LINK_ESTABLISHED: Access Granted.");
-                return { success: true, data: result.data };
-            } else {
-                console.warn(">> LINK_FAILURE: " + result.message);
-                return { success: false, message: result.message };
-            }
-        } catch (error) {
-            console.error(">> CRITICAL_COMM_ERROR:", error);
-            return { success: false, message: "SERVER_OFFLINE" };
-        }
-    },
-
-    /**
-     * AUTHENTICATION: SIGNUP
-     * Initialization of New Neural Identity
-     */
-    async signup(username, password) {
-        console.log(`>> RESERVING_ID: ${username}...`);
-        try {
-            const response = await fetch(`${this.BASE_URL}/signup`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                console.log(">> IDENTITY_RESERVED: Pilot Enrolled.");
-                return { success: true, data: result.data };
-            } else {
-                return { success: false, message: result.message };
-            }
-        } catch (error) {
-            console.error(">> ENROLLMENT_ERROR:", error);
-            return { success: false, message: "SERVER_OFFLINE" };
-        }
-    },
-
-    /**
-     * DATA PERSISTENCE: SAVE PROGRESS
-     * Backs up Levels, XP, Wins, and Streaks
-     */
-    async saveProgress(username, data) {
-        console.log(`>> SYNCING_PROGRESS: ${username}...`);
-        try {
-            const response = await fetch(`${this.BASE_URL}/save`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, data })
-            });
-
             const result = await response.json();
             if (result.success) {
-                sessionStorage.setItem('titan_data', JSON.stringify(data));
-                return true;
+                // Keep the local session in sync with the cloud
+                sessionStorage.setItem('titan_data', JSON.stringify(stats));
+                console.log(">> TITAN_OS: CLOUD_SYNC_COMPLETE");
             }
-            return false;
-        } catch (error) {
-            console.error(">> SYNC_ERROR:", error);
-            return false;
+            return result;
+        } catch (e) {
+            console.error(">> TITAN_OS: SYNC_ERROR", e);
+            return { success: false };
         }
-    },
-
-    /**
-     * BANKING SYSTEM: SAVE COINS
-     */
-    async saveCoins(username, coins) {
-        console.log(`>> UPLOADING_CREDITS: ${coins}₮ to ${username}...`);
-        try {
-            const response = await fetch(`${this.BASE_URL}/save-coins`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, coins })
-            });
-
-            const result = await response.json();
-            return result.success;
-        } catch (error) {
-            console.error(">> BANK_TRANSFER_ERROR:", error);
-            return false;
-        }
-    },
-
-    /**
-     * SYSTEM TERMINATION
-     */
-    logout() {
-        console.log(">> TERMINATING_SESSION...");
-        sessionStorage.removeItem('titan_user');
-        sessionStorage.removeItem('titan_data');
-        window.location.href = 'index.html'; 
-    },
-
-    /**
-     * UTILITY: GET LOCAL DATA
-     */
-    getLocalData() {
-        const user = sessionStorage.getItem('titan_user');
-        const rawData = sessionStorage.getItem('titan_data');
-        if (!user || !rawData) return null;
-        
-        return {
-            username: user,
-            stats: JSON.parse(rawData)
-        };
     }
 };

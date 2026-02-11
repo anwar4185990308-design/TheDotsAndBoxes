@@ -49,7 +49,6 @@
         .pilot-info h1 { font-family: 'Orbitron'; font-size: 2.5rem; color: var(--red); margin: 0; text-transform: uppercase; }
         .status-pill { background: rgba(0, 242, 255, 0.1); color: var(--blue); padding: 5px 15px; border-radius: 20px; font-size: 0.7rem; font-family: 'Fira Code'; border: 1px solid var(--blue); }
 
-        /* --- YELLOW SHOP BUTTON --- */
         .shop-nav-btn {
             background: transparent;
             border: 2px solid var(--gold);
@@ -126,7 +125,7 @@
             <div class="input-group">
                 <input type="password" id="login-pass" placeholder="PASSWORD">
             </div>
-            <button onclick="handleAuth('login')">LINK_START</button>
+            <button id="login-btn" onclick="handleAuth('login')">LINK_START</button>
             <p onclick="toggleAuth(false)" style="color:#444; cursor:pointer; margin-top:20px; font-size:0.75rem; text-align:center;">[ INITIALIZE NEW IDENTITY ]</p>
         </div>
 
@@ -138,7 +137,7 @@
             <div class="input-group">
                 <input type="password" id="signup-pass" placeholder="NEW_PASS">
             </div>
-            <button onclick="handleAuth('signup')">RESERVE_ID</button>
+            <button id="signup-btn" onclick="handleAuth('signup')">RESERVE_ID</button>
             <p onclick="toggleAuth(true)" style="color:#444; cursor:pointer; margin-top:20px; font-size:0.75rem; text-align:center;">[ RETURN TO LOGIN ]</p>
         </div>
     </div>
@@ -202,6 +201,10 @@
     <script src="account.js"></script>
     <script src="leaderboard.js"></script>
     <script>
+        // --- CONFIGURATION ---
+        // Change this to your actual Render URL
+        const API_BASE = "https://thedotsandboxes.onrender.com";
+
         const canvas = document.getElementById('bg-canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = window.innerWidth; canvas.height = window.innerHeight;
@@ -239,16 +242,23 @@
             const u = document.getElementById(`${type}-user`).value;
             const p = document.getElementById(`${type}-pass`).value;
             if(!u || !p) return;
-            const btn = event.target;
-            btn.innerText = "LINKING...";
+            const btn = document.getElementById(`${type}-btn`);
+            btn.innerText = "WAKING_CORE...";
             btn.disabled = true;
-            const res = (type === 'login') ? await AccountSystem.login(u, p) : await AccountSystem.signup(u, p);
-            if(res.success) {
-                sessionStorage.setItem('titan_user', u);
-                sessionStorage.setItem('titan_data', JSON.stringify(res.data));
-                location.reload();
-            } else {
-                alert("ACCESS_DENIED: " + res.message);
+
+            try {
+                const res = (type === 'login') ? await AccountSystem.login(u, p) : await AccountSystem.signup(u, p);
+                if(res.success) {
+                    sessionStorage.setItem('titan_user', u);
+                    sessionStorage.setItem('titan_data', JSON.stringify(res.data));
+                    location.reload();
+                } else {
+                    alert("ACCESS_DENIED: " + res.message);
+                    btn.innerText = type === 'login' ? 'LINK_START' : 'RESERVE_ID';
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                alert("SERVER_OFFLINE: Wait 30s for Render to wake up.");
                 btn.innerText = type === 'login' ? 'LINK_START' : 'RESERVE_ID';
                 btn.disabled = false;
             }
@@ -258,8 +268,10 @@
             if(!username) return;
             const coinEl = document.getElementById('hub-coins');
             const statusEl = document.getElementById('sync-status');
+            
             try {
-                const response = await fetch(`http://localhost:3000/get-coins/${username}?t=${Date.now()}`);
+                // Using the API_BASE variable instead of localhost
+                const response = await fetch(`${API_BASE}/get-coins/${username}?t=${Date.now()}`);
                 if(!response.ok) throw new Error();
                 const data = await response.json();
                 coinEl.innerText = data.coins.toString().padStart(4, '0');
@@ -267,9 +279,9 @@
                 statusEl.innerText = "NEURAL_SYNC: 100% | STATUS: ONLINE";
                 statusEl.style.color = "var(--blue)";
             } catch (e) {
-                coinEl.innerText = "OFFL";
+                coinEl.innerText = "WAKE";
                 coinEl.style.color = "var(--red)";
-                statusEl.innerText = "NEURAL_SYNC: 0% | SERVER_UNREACHABLE";
+                statusEl.innerText = "NEURAL_SYNC: 0% | WAKING_CORE (WAIT 30s)...";
                 statusEl.style.color = "var(--red)";
             }
         }
@@ -278,7 +290,6 @@
             const user = sessionStorage.getItem('titan_user');
             const data = JSON.parse(sessionStorage.getItem('titan_data')) || { level: 1, wins: 0, streak: 0, xp: 0 };
             
-            // Calculate XP needed for this specific level (standard RPG progression)
             const xpNeeded = 100 + (data.level - 1) * 50; 
             const visualPercent = (data.xp / xpNeeded) * 100;
 
@@ -286,8 +297,6 @@
             document.getElementById('lvl-num').innerText = data.level.toString().padStart(2, '0');
             document.getElementById('hub-wins').innerText = data.wins.toString().padStart(2, '0');
             document.getElementById('hub-streak').innerText = data.streak;
-            
-            // Updated to current_xp / xp_needed format
             document.getElementById('xp-percent').innerText = `${data.xp}/${xpNeeded}`;
             
             setTimeout(() => { 
@@ -299,7 +308,7 @@
             document.getElementById('rank-name').innerText = titles[titleIdx];
             
             fetchNeuralCredits(user);
-            setInterval(() => fetchNeuralCredits(user), 10000);
+            setInterval(() => fetchNeuralCredits(user), 15000);
             
             if (typeof GlobalLeaderboard !== 'undefined') { 
                 GlobalLeaderboard.fetchAndRender(); 

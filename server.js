@@ -9,7 +9,7 @@ app.use(cors());
 app.use(express.static('./'));
 
 // CONFIG: Replace with your actual MongoDB URI
-const uri = "YOUR_MONGODB_URI_HERE";
+const uri = "mongodb+srv://anamuyt66tt_db_user:wbEIKDFt6Fl8YSAO@cluster0.my8z8ya.mongodb.net/?appName=Cluster0";
 const client = new MongoClient(uri);
 
 async function initDB() {
@@ -87,3 +87,4 @@ app.post('/save-progress', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`TITAN_OS_ONLINE_ON_${PORT}`));
+

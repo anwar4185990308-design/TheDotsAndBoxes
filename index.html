@@ -109,7 +109,6 @@
         .launch-btn:hover { background: var(--red); color: white; box-shadow: 0 0 50px var(--red); }
         .logout-link { color: #444; font-family: 'Fira Code'; font-size: 0.7rem; cursor: pointer; text-decoration: underline; margin-top: auto; }
         .logout-link:hover { color: var(--red); }
-
     </style>
 </head>
 <body>
@@ -201,9 +200,9 @@
     <script src="account.js"></script>
     <script src="leaderboard.js"></script>
     <script>
-        // --- CONFIGURATION ---
-        const API_BASE = window.location.origin; // Automatically uses your Render URL
+        const API_BASE = window.location.origin;
 
+        // --- MATRIX BACKGROUND EFFECT ---
         const canvas = document.getElementById('bg-canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = window.innerWidth; canvas.height = window.innerHeight;
@@ -223,6 +222,7 @@
         }
         setInterval(drawMatrix, 50);
 
+        // --- AUTHENTICATION LOGIC ---
         window.onload = () => {
             const user = sessionStorage.getItem('titan_user');
             if(user) {
@@ -249,8 +249,16 @@
                 const res = (type === 'login') ? await AccountSystem.login(u, p) : await AccountSystem.signup(u, p);
                 if(res.success) {
                     sessionStorage.setItem('titan_user', u);
-                    // Initial data save to session
-                    sessionStorage.setItem('titan_data', JSON.stringify(res.data));
+                    
+                    // Map the database 'files' structure to local session storage
+                    const userData = {
+                        level: res.data.files.levels,
+                        coins: res.data.files.coin,
+                        wins: res.data.files.wins,
+                        streak: res.data.files.streak,
+                        xp: res.data.files.xp || 0
+                    };
+                    sessionStorage.setItem('titan_data', JSON.stringify(userData));
                     location.reload();
                 } else {
                     alert("ACCESS_DENIED: " + res.message);
@@ -264,6 +272,7 @@
             }
         }
 
+        // --- DATA SYNCHRONIZATION (HUB) ---
         async function loadHub() {
             const user = sessionStorage.getItem('titan_user');
             if(!user) return;
@@ -271,34 +280,42 @@
             const statusEl = document.getElementById('sync-status');
             
             try {
-                // FETCH PROFILE DATA (Replaces reading profile.txt)
                 const response = await fetch(`${API_BASE}/get-profile/${user}?t=${Date.now()}`);
                 if(!response.ok) throw new Error();
                 const result = await response.json();
                 
                 if(result.success) {
-                    const data = result.data;
+                    const f = result.data; // This is the 'files' object from DB
                     
-                    // Update session storage so game.html sees the latest
-                    sessionStorage.setItem('titan_data', JSON.stringify(data));
+                    // Sync internal session
+                    const updatedStats = {
+                        level: f.levels,
+                        coins: f.coin,
+                        wins: f.wins,
+                        streak: f.streak,
+                        xp: f.xp || 0
+                    };
+                    sessionStorage.setItem('titan_data', JSON.stringify(updatedStats));
 
                     // UI MAPPING
-                    const xpNeeded = 100 + (data.level - 1) * 50; 
-                    const visualPercent = (data.xp / xpNeeded) * 100;
-
                     document.getElementById('user-display').innerText = user.toUpperCase();
-                    document.getElementById('lvl-num').innerText = data.level.toString().padStart(2, '0');
-                    document.getElementById('hub-wins').innerText = data.wins.toString().padStart(2, '0');
-                    document.getElementById('hub-streak').innerText = data.streak;
-                    document.getElementById('xp-percent').innerText = `${data.xp}/${xpNeeded}`;
-                    document.getElementById('hub-coins').innerText = data.coins.toString().padStart(4, '0');
+                    document.getElementById('lvl-num').innerText = f.levels.toString().padStart(2, '0');
+                    document.getElementById('hub-wins').innerText = f.wins.toString().padStart(2, '0');
+                    document.getElementById('hub-streak').innerText = f.streak;
+                    document.getElementById('hub-coins').innerText = f.coin.toString().padStart(4, '0');
+                    
+                    // XP Calculations
+                    const xpNeeded = 100 + (f.levels - 1) * 50; 
+                    const visualPercent = Math.min((f.xp / xpNeeded) * 100, 100);
+                    document.getElementById('xp-percent').innerText = `${f.xp}/${xpNeeded}`;
                     
                     setTimeout(() => { 
                         document.getElementById('level-progress').style.width = visualPercent + "%"; 
                     }, 500);
 
+                    // Rank Titles
                     const titles = ["RECRUIT", "OPERATIVE", "ELITE", "TITAN", "GHOST"];
-                    const titleIdx = Math.min(Math.floor(data.level / 5), titles.length - 1);
+                    const titleIdx = Math.min(Math.floor(f.levels / 5), titles.length - 1);
                     document.getElementById('rank-name').innerText = titles[titleIdx];
 
                     statusEl.innerText = "NEURAL_SYNC: 100% | STATUS: ONLINE";
@@ -310,15 +327,13 @@
                 statusEl.style.color = "var(--red)";
             }
 
-            // Sync Leaderboard
             if (typeof GlobalLeaderboard !== 'undefined') { 
                 GlobalLeaderboard.fetchAndRender(); 
             }
         }
 
-        // Auto-refresh every 30 seconds to keep data live
+        // Auto-refresh stats every 30 seconds
         setInterval(loadHub, 30000);
-
     </script>
 </body>
 </html>

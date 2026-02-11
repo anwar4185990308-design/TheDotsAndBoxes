@@ -12,7 +12,7 @@ app.use(express.static(__dirname));
 
 // --- DATABASE CONNECTION ---
 // Make sure to replace <db_password> with the password you created in Database Access!
-const MONGO_URI = "mongodb+srv://anamuyt66tt_db_user:<db_password>@cluster0.my8z8ya.mongodb.net/titan_os?retryWrites=true&w=majority&appName=Cluster0";
+const MONGO_URI = "mongodb+srv://anamuyt66tt_db_user:wbEIKDFt6Fl8YSAO@cluster0.my8z8ya.mongodb.net/titan_os?retryWrites=true&w=majority&appName=Cluster0";
 
 mongoose.connect(MONGO_URI)
     .then(() => console.log(">> TITAN_DB: NEURAL_CLOUD_CONNECTED"))
@@ -119,3 +119,4 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`>> TITAN_OS MASTER SERVER ONLINE [PORT ${PORT}]`);
 });
+

@@ -6,39 +6,38 @@ const path = require('path');
 const app = express();
 app.use(express.json());
 app.use(cors());
-app.use(express.static('./')); // Serves your HTML/JS files
+app.use(express.static('./'));
 
-// --- MONGO CONFIG ---
-const uri = "mongodb+srv://anamuyt66tt_db_user:wbEIKDFt6Fl8YSAO@cluster0.my8z8ya.mongodb.net/?appName=Cluster0"; 
+// CONFIG: Replace with your actual MongoDB URI
+const uri = "YOUR_MONGODB_URI_HERE";
 const client = new MongoClient(uri);
 
-async function connectDB() {
+async function initDB() {
     try {
         await client.connect();
-        console.log(">> TITAN_OS: NEURAL_LINK_ESTABLISHED (MongoDB Connected)");
-    } catch (e) {
-        console.error(">> TITAN_OS: LINK_FAILURE", e);
-    }
+        console.log(">> TITAN_OS: DATABASE_LINK_ESTABLISHED");
+    } catch (e) { console.error("LINK_FAILURE", e); }
 }
-connectDB();
+initDB();
 
-// --- 1. SIGNUP (Create User & Virtual Folders) ---
+// --- AUTH: SIGNUP ---
 app.post('/signup', async (req, res) => {
     const { username, password } = req.body;
     const db = client.db("Titan-OS");
     const users = db.collection("users");
 
-    const existing = await users.findOne({ username });
-    if (existing) return res.json({ success: false, message: "USER_EXISTS" });
+    const exists = await users.findOne({ username });
+    if (exists) return res.json({ success: false, message: "ID_ALREADY_RESERVED" });
 
     const newUser = {
         username,
-        password, // Saved here
+        password, // Stored as plain text per request
         files: {
             levels: 1,
             coin: 0,
             wins: 0,
-            streak: 0
+            streak: 0,
+            xp: 0
         }
     };
 
@@ -46,20 +45,25 @@ app.post('/signup', async (req, res) => {
     res.json({ success: true, data: newUser });
 });
 
-// --- 2. LOGIN ---
+// --- AUTH: LOGIN ---
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
     const db = client.db("Titan-OS");
     const user = await db.collection("users").findOne({ username, password });
 
-    if (user) {
-        res.json({ success: true, data: user });
-    } else {
-        res.json({ success: false, message: "INVALID_CREDENTIALS" });
-    }
+    if (user) res.json({ success: true, data: user });
+    else res.json({ success: false, message: "INVALID_CREDENTIALS" });
 });
 
-// --- 3. SAVE PROGRESS (Writing to virtual .txt files) ---
+// --- DATA: GET PROFILE ---
+app.get('/get-profile/:username', async (req, res) => {
+    const db = client.db("Titan-OS");
+    const user = await db.collection("users").findOne({ username: req.params.username });
+    if (user) res.json({ success: true, data: user.files });
+    else res.json({ success: false });
+});
+
+// --- DATA: SAVE (The "Virtual File" Writer) ---
 app.post('/save-progress', async (req, res) => {
     const { username, data } = req.body;
     const db = client.db("Titan-OS");
@@ -72,16 +76,14 @@ app.post('/save-progress', async (req, res) => {
                     "files.levels": data.level,
                     "files.coin": data.coins,
                     "files.wins": data.wins,
-                    "files.streak": data.streak
+                    "files.streak": data.streak,
+                    "files.xp": data.xp
                 } 
             }
         );
         res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ success: false });
-    }
+    } catch (err) { res.status(500).json({ success: false }); }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`>> SYSTEM_READY_ON_PORT_${PORT}`));
-
+app.listen(PORT, () => console.log(`TITAN_OS_ONLINE_ON_${PORT}`));

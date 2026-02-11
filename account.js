@@ -4,8 +4,8 @@
  */
 
 const AccountSystem = {
-    // The base URL for your local Node.js server
-    BASE_URL: 'http://localhost:3000',
+    // UPDATED: Pointing to your live Render server instead of localhost
+    BASE_URL: 'https://thedotsandboxes.onrender.com',
 
     /**
      * AUTHENTICATION: LOGIN
@@ -77,7 +77,6 @@ const AccountSystem = {
 
             const result = await response.json();
             if (result.success) {
-                // Update local storage to keep client in sync with server
                 sessionStorage.setItem('titan_data', JSON.stringify(data));
                 return true;
             }
@@ -90,7 +89,6 @@ const AccountSystem = {
 
     /**
      * BANKING SYSTEM: SAVE COINS
-     * Specifically updates the coin.txt via the server
      */
     async saveCoins(username, coins) {
         console.log(`>> UPLOADING_CREDITS: ${coins}₮ to ${username}...`);
@@ -111,7 +109,6 @@ const AccountSystem = {
 
     /**
      * SYSTEM TERMINATION
-     * Clears local cache and disconnects
      */
     logout() {
         console.log(">> TERMINATING_SESSION...");
@@ -122,7 +119,6 @@ const AccountSystem = {
 
     /**
      * UTILITY: GET LOCAL DATA
-     * Quickly retrieves current pilot session info
      */
     getLocalData() {
         const user = sessionStorage.getItem('titan_user');

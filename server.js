@@ -119,8 +119,10 @@ app.get('/leaderboard', (req, res) => {
     res.json(leaderData);
 });
 
-const PORT = 3000;
-app.listen(PORT, () => {
-    console.log(`\n>> TITAN_OS MASTER SERVER ONLINE [PORT ${PORT}]`);
-    console.log(`>> ALL SYSTEMS (BANKING, SHOP, AUTH) INTEGRATED\n`);
+// This line lets Render tell the app which port to use
+const PORT = process.env.PORT || 3000; 
+
+// You MUST use '0.0.0.0' for it to work on Render
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on port ${PORT}`);
 });

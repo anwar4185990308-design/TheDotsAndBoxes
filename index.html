@@ -175,8 +175,8 @@
                     <div class="stat-val" id="hub-streak">0</div>
                 </div>
 
-                <div class="stat-card coin-card" onclick="fetchNeuralCredits(sessionStorage.getItem('titan_user'))">
-                    <small>NEURAL_CREDITS (CLICK TO SYNC)</small>
+                <div class="stat-card coin-card" onclick="loadHub()">
+                    <small>NEURAL_CREDITS (CLICK TO REFRESH)</small>
                     <div class="stat-val" id="hub-coins">0000</div>
                 </div>
 
@@ -202,8 +202,7 @@
     <script src="leaderboard.js"></script>
     <script>
         // --- CONFIGURATION ---
-        // Change this to your actual Render URL
-        const API_BASE = "https://thedotsandboxes.onrender.com";
+        const API_BASE = window.location.origin; // Automatically uses your Render URL
 
         const canvas = document.getElementById('bg-canvas');
         const ctx = canvas.getContext('2d');
@@ -250,6 +249,7 @@
                 const res = (type === 'login') ? await AccountSystem.login(u, p) : await AccountSystem.signup(u, p);
                 if(res.success) {
                     sessionStorage.setItem('titan_user', u);
+                    // Initial data save to session
                     sessionStorage.setItem('titan_data', JSON.stringify(res.data));
                     location.reload();
                 } else {
@@ -264,56 +264,61 @@
             }
         }
 
-        async function fetchNeuralCredits(username) {
-            if(!username) return;
-            const coinEl = document.getElementById('hub-coins');
+        async function loadHub() {
+            const user = sessionStorage.getItem('titan_user');
+            if(!user) return;
+            
             const statusEl = document.getElementById('sync-status');
             
             try {
-                // Using the API_BASE variable instead of localhost
-                const response = await fetch(`${API_BASE}/get-coins/${username}?t=${Date.now()}`);
+                // FETCH PROFILE DATA (Replaces reading profile.txt)
+                const response = await fetch(`${API_BASE}/get-profile/${user}?t=${Date.now()}`);
                 if(!response.ok) throw new Error();
-                const data = await response.json();
-                coinEl.innerText = data.coins.toString().padStart(4, '0');
-                coinEl.style.color = "var(--gold)";
-                statusEl.innerText = "NEURAL_SYNC: 100% | STATUS: ONLINE";
-                statusEl.style.color = "var(--blue)";
+                const result = await response.json();
+                
+                if(result.success) {
+                    const data = result.data;
+                    
+                    // Update session storage so game.html sees the latest
+                    sessionStorage.setItem('titan_data', JSON.stringify(data));
+
+                    // UI MAPPING
+                    const xpNeeded = 100 + (data.level - 1) * 50; 
+                    const visualPercent = (data.xp / xpNeeded) * 100;
+
+                    document.getElementById('user-display').innerText = user.toUpperCase();
+                    document.getElementById('lvl-num').innerText = data.level.toString().padStart(2, '0');
+                    document.getElementById('hub-wins').innerText = data.wins.toString().padStart(2, '0');
+                    document.getElementById('hub-streak').innerText = data.streak;
+                    document.getElementById('xp-percent').innerText = `${data.xp}/${xpNeeded}`;
+                    document.getElementById('hub-coins').innerText = data.coins.toString().padStart(4, '0');
+                    
+                    setTimeout(() => { 
+                        document.getElementById('level-progress').style.width = visualPercent + "%"; 
+                    }, 500);
+
+                    const titles = ["RECRUIT", "OPERATIVE", "ELITE", "TITAN", "GHOST"];
+                    const titleIdx = Math.min(Math.floor(data.level / 5), titles.length - 1);
+                    document.getElementById('rank-name').innerText = titles[titleIdx];
+
+                    statusEl.innerText = "NEURAL_SYNC: 100% | STATUS: ONLINE";
+                    statusEl.style.color = "var(--blue)";
+                }
             } catch (e) {
-                coinEl.innerText = "WAKE";
-                coinEl.style.color = "var(--red)";
-                statusEl.innerText = "NEURAL_SYNC: 0% | WAKING_CORE (WAIT 30s)...";
+                console.error("SYNC_ERROR", e);
+                statusEl.innerText = "NEURAL_SYNC: ERROR | RECONNECTING...";
                 statusEl.style.color = "var(--red)";
             }
-        }
 
-        function loadHub() {
-            const user = sessionStorage.getItem('titan_user');
-            const data = JSON.parse(sessionStorage.getItem('titan_data')) || { level: 1, wins: 0, streak: 0, xp: 0 };
-            
-            const xpNeeded = 100 + (data.level - 1) * 50; 
-            const visualPercent = (data.xp / xpNeeded) * 100;
-
-            document.getElementById('user-display').innerText = user.toUpperCase();
-            document.getElementById('lvl-num').innerText = data.level.toString().padStart(2, '0');
-            document.getElementById('hub-wins').innerText = data.wins.toString().padStart(2, '0');
-            document.getElementById('hub-streak').innerText = data.streak;
-            document.getElementById('xp-percent').innerText = `${data.xp}/${xpNeeded}`;
-            
-            setTimeout(() => { 
-                document.getElementById('level-progress').style.width = visualPercent + "%"; 
-            }, 500);
-
-            const titles = ["RECRUIT", "OPERATIVE", "ELITE", "TITAN", "GHOST"];
-            const titleIdx = Math.min(Math.floor(data.level / 5), titles.length - 1);
-            document.getElementById('rank-name').innerText = titles[titleIdx];
-            
-            fetchNeuralCredits(user);
-            setInterval(() => fetchNeuralCredits(user), 15000);
-            
+            // Sync Leaderboard
             if (typeof GlobalLeaderboard !== 'undefined') { 
                 GlobalLeaderboard.fetchAndRender(); 
             }
         }
+
+        // Auto-refresh every 30 seconds to keep data live
+        setInterval(loadHub, 30000);
+
     </script>
 </body>
 </html>

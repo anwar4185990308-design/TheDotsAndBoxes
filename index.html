@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TITAN_OS: NEURAL GATE</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&family=Rajdhani:wght@500;700&family=Fira+Code:wght@400;700&display=swap');
+
+        :root {
+            --bg: #050508;
+            --red: #ff0055;
+            --blue: #00f2ff;
+            --gold: #ffcc00;
+            --glow: rgba(255, 0, 85, 0.4);
+            --panel-bg: rgba(10, 10, 15, 0.98);
+            --xp-bar: #00ff66;
+        }
+
+        body, html { 
+            margin: 0; padding: 0; background: var(--bg); color: white; 
+            font-family: 'Rajdhani', sans-serif; height: 100vh; overflow-y: auto; 
+        }
+
+        #bg-canvas { position: fixed; inset: 0; z-index: -1; opacity: 0.4; }
+        .scanline { position: fixed; inset: 0; pointer-events: none; z-index: 2; background: linear-gradient(to bottom, transparent 50%, rgba(0, 242, 255, 0.02) 50%); background-size: 100% 4px; }
+
+        /* --- AUTHENTICATION INTERFACE --- */
+        #auth-overlay { height: 100vh; display: flex; justify-content: center; align-items: center; z-index: 10; position: relative; }
+        .auth-box {
+            width: 420px; padding: 50px; background: var(--panel-bg); 
+            border: 1px solid #333; position: relative;
+            box-shadow: 0 0 60px rgba(0,0,0,1), inset 0 0 20px rgba(255, 0, 85, 0.1);
+            clip-path: polygon(0 20px, 20px 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%);
+        }
+
+        h2 { font-family: 'Orbitron'; font-size: 1.5rem; color: var(--red); letter-spacing: 8px; margin-bottom: 30px; text-shadow: 0 0 10px var(--red); }
+        .input-group { position: relative; margin-bottom: 15px; }
+        input { width: 100%; padding: 15px; background: #000; border: 1px solid #222; color: var(--blue); font-family: 'Fira Code'; outline: none; transition: 0.3s; box-sizing: border-box; }
+        input:focus { border-color: var(--blue); box-shadow: 0 0 15px rgba(0, 242, 255, 0.2); }
+        
+        button { width: 100%; padding: 18px; margin-top: 25px; background: var(--red); border: none; color: white; font-family: 'Orbitron'; font-weight: 900; cursor: pointer; font-size: 0.9rem; letter-spacing: 2px; transition: 0.3s; }
+        button:hover { background: #ff2b73; box-shadow: 0 0 30px var(--red); transform: translateY(-2px); }
+
+        /* --- MAIN HUB INTERFACE --- */
+        #hub-interface { display: none; height: 100vh; flex-direction: column; padding: 40px 60px; z-index: 10; box-sizing: border-box; }
+        
+        .hub-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; border-bottom: 1px solid #222; padding-bottom: 20px; }
+        .pilot-info h1 { font-family: 'Orbitron'; font-size: 2.5rem; color: var(--red); margin: 0; text-transform: uppercase; }
+        .status-pill { background: rgba(0, 242, 255, 0.1); color: var(--blue); padding: 5px 15px; border-radius: 20px; font-size: 0.7rem; font-family: 'Fira Code'; border: 1px solid var(--blue); }
+
+        /* --- YELLOW SHOP BUTTON --- */
+        .shop-nav-btn {
+            background: transparent;
+            border: 2px solid var(--gold);
+            color: var(--gold);
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 900;
+            padding: 8px 25px;
+            cursor: pointer;
+            transition: 0.3s;
+            text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+            box-shadow: inset 0 0 10px rgba(255, 204, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            letter-spacing: 2px;
+            margin-left: 20px;
+            font-size: 0.8rem;
+        }
+        .shop-nav-btn:hover {
+            background: var(--gold);
+            color: #000;
+            box-shadow: 0 0 25px var(--gold);
+        }
+
+        .level-section { margin-bottom: 30px; }
+        .level-container { width: 100%; background: #0a0a0f; height: 15px; border: 1px solid #333; position: relative; overflow: hidden; box-shadow: inset 0 0 10px #000; }
+        #level-progress { height: 100%; width: 0%; background: linear-gradient(90deg, var(--xp-bar), #00441a); transition: width 1.5s cubic-bezier(0.1, 0, 0, 1); box-shadow: 0 0 15px var(--xp-bar); }
+        .level-text { font-family: 'Fira Code'; font-size: 0.8rem; color: var(--xp-bar); margin-bottom: 8px; display: flex; justify-content: space-between; }
+
+        .main-layout { display: grid; grid-template-columns: 280px 1fr 350px; gap: 30px; height: calc(100% - 200px); }
+
+        .side-stats { display: flex; flex-direction: column; gap: 15px; }
+        .stat-card { background: rgba(255,255,255,0.02); border: 1px solid #1a1a1a; padding: 25px; text-align: left; position: relative; transition: 0.3s; }
+        .stat-card small { color: #555; font-family: 'Orbitron'; font-size: 0.6rem; letter-spacing: 2px; }
+        .stat-val { font-size: 2.2rem; font-weight: 900; color: var(--blue); font-family: 'Orbitron'; margin-top: 5px; }
+
+        .coin-card { 
+            border: 1px solid var(--gold) !important; 
+            background: linear-gradient(135deg, rgba(255, 204, 0, 0.05), transparent) !important;
+            box-shadow: inset 0 0 20px rgba(255, 204, 0, 0.05);
+            cursor: pointer;
+        }
+        .coin-card:hover { transform: scale(1.02); box-shadow: 0 0 20px rgba(255, 204, 0, 0.2); }
+        .coin-card .stat-val { color: var(--gold); text-shadow: 0 0 15px rgba(255, 204, 0, 0.3); }
+        .coin-card small { color: var(--gold); opacity: 0.6; }
+
+        .leaderboard { background: rgba(0,0,0,0.4); border: 1px solid #222; display: flex; flex-direction: column; position: relative; }
+        .lb-header { padding: 15px; background: #0a0a0f; font-family: 'Orbitron'; font-size: 0.75rem; color: var(--gold); border-bottom: 1px solid #333; letter-spacing: 1px; }
+        .lb-list { flex: 1; overflow-y: auto; padding: 10px; font-family: 'Fira Code'; font-size: 0.85rem; }
+        
+        .combat-center { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 40px; }
+        .launch-btn { 
+            width: 100%; max-width: 400px; height: 120px; 
+            background: transparent; border: 2px solid var(--red); color: var(--red);
+            font-family: 'Orbitron'; font-size: 1.8rem; cursor: pointer; transition: 0.4s;
+            position: relative; overflow: hidden;
+        }
+        .launch-btn:hover { background: var(--red); color: white; box-shadow: 0 0 50px var(--red); }
+        .logout-link { color: #444; font-family: 'Fira Code'; font-size: 0.7rem; cursor: pointer; text-decoration: underline; margin-top: auto; }
+        .logout-link:hover { color: var(--red); }
+
+    </style>
+</head>
+<body>
+    <canvas id="bg-canvas"></canvas>
+    <div class="scanline"></div>
+
+    <div id="auth-overlay">
+        <div class="auth-box" id="login-box">
+            <h2>LOGIN_</h2>
+            <div class="input-group">
+                <input type="text" id="login-user" placeholder="USER_ID">
+            </div>
+            <div class="input-group">
+                <input type="password" id="login-pass" placeholder="PASSWORD">
+            </div>
+            <button onclick="handleAuth('login')">LINK_START</button>
+            <p onclick="toggleAuth(false)" style="color:#444; cursor:pointer; margin-top:20px; font-size:0.75rem; text-align:center;">[ INITIALIZE NEW IDENTITY ]</p>
+        </div>
+
+        <div class="auth-box" id="signup-box" style="display:none">
+            <h2>SIGNUP_</h2>
+            <div class="input-group">
+                <input type="text" id="signup-user" placeholder="NEW_ID">
+            </div>
+            <div class="input-group">
+                <input type="password" id="signup-pass" placeholder="NEW_PASS">
+            </div>
+            <button onclick="handleAuth('signup')">RESERVE_ID</button>
+            <p onclick="toggleAuth(true)" style="color:#444; cursor:pointer; margin-top:20px; font-size:0.75rem; text-align:center;">[ RETURN TO LOGIN ]</p>
+        </div>
+    </div>
+
+    <div id="hub-interface">
+        <div class="hub-header">
+            <div class="pilot-info">
+                <h1 id="user-display">---</h1>
+                <div class="status-pill" id="sync-status">NEURAL_SYNC: 100% | STATUS: ONLINE</div>
+            </div>
+            <div style="display:flex; align-items:center;">
+                <div id="hub-rank" style="font-family:'Orbitron'; color:var(--blue); font-size:0.9rem;">RANK: <span id="rank-name" style="color:var(--gold)">RECRUIT</span></div>
+                <button class="shop-nav-btn" onclick="location.href='shop.html'">🛒 BLACK_MARKET</button>
+            </div>
+        </div>
+
+        <div class="level-section">
+            <span class="level-text">
+                <span>NEURAL_XP_LEVEL: <span id="lvl-num">01</span></span>
+                <span id="xp-percent">0/100</span>
+            </span>
+            <div class="level-container">
+                <div id="level-progress"></div>
+            </div>
+        </div>
+
+        <div class="main-layout">
+            <div class="side-stats">
+                <div class="stat-card">
+                    <small>TOTAL_WINS</small>
+                    <div class="stat-val" id="hub-wins">00</div>
+                </div>
+                <div class="stat-card">
+                    <small>CURRENT_STREAK</small>
+                    <div class="stat-val" id="hub-streak">0</div>
+                </div>
+
+                <div class="stat-card coin-card" onclick="fetchNeuralCredits(sessionStorage.getItem('titan_user'))">
+                    <small>NEURAL_CREDITS (CLICK TO SYNC)</small>
+                    <div class="stat-val" id="hub-coins">0000</div>
+                </div>
+
+                <div class="logout-link" onclick="AccountSystem.logout()">TERMINATE_SESSION.exe</div>
+            </div>
+
+            <div class="combat-center">
+                <div style="text-align:center; color:#222; font-family:'Orbitron'; font-size:5rem; font-weight:900; position:absolute; z-index:-1; opacity:0.1;">TITAN_OS</div>
+                <button class="launch-btn" onclick="location.href='game.html'">INIT_COMBAT_CORE</button>
+                <div style="color:#444; font-size:0.7rem; font-family:'Fira Code'; text-align:center; max-width:300px;">
+                    WARNING: DISCONNECTION DURING COMBAT WILL RESULT IN NEURAL CORRUPTION (STREAK RESET).
+                </div>
+            </div>
+
+            <div class="leaderboard">
+                <div class="lb-header">RANKING_DATABASE // TOP_PILOTS</div>
+                <div class="lb-list" id="lb-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="account.js"></script>
+    <script src="leaderboard.js"></script>
+    <script>
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+        const drops = Array(Math.floor(canvas.width / 18)).fill(1);
+        
+        function drawMatrix() {
+            ctx.fillStyle = "rgba(5, 5, 8, 0.15)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "#ff0055";
+            ctx.font = "14px Fira Code";
+            for (let i = 0; i < drops.length; i++) {
+                const text = String.fromCharCode(0x30A0 + Math.random() * 96);
+                ctx.fillText(text, i * 18, drops[i] * 18);
+                if (drops[i] * 18 > canvas.height && Math.random() > 0.975) drops[i] = 0;
+                drops[i]++;
+            }
+        }
+        setInterval(drawMatrix, 50);
+
+        window.onload = () => {
+            const user = sessionStorage.getItem('titan_user');
+            if(user) {
+                document.getElementById('auth-overlay').style.display = 'none';
+                document.getElementById('hub-interface').style.display = 'flex';
+                loadHub();
+            }
+        };
+
+        function toggleAuth(login) {
+            document.getElementById('login-box').style.display = login ? 'block' : 'none';
+            document.getElementById('signup-box').style.display = login ? 'none' : 'block';
+        }
+
+        async function handleAuth(type) {
+            const u = document.getElementById(`${type}-user`).value;
+            const p = document.getElementById(`${type}-pass`).value;
+            if(!u || !p) return;
+            const btn = event.target;
+            btn.innerText = "LINKING...";
+            btn.disabled = true;
+            const res = (type === 'login') ? await AccountSystem.login(u, p) : await AccountSystem.signup(u, p);
+            if(res.success) {
+                sessionStorage.setItem('titan_user', u);
+                sessionStorage.setItem('titan_data', JSON.stringify(res.data));
+                location.reload();
+            } else {
+                alert("ACCESS_DENIED: " + res.message);
+                btn.innerText = type === 'login' ? 'LINK_START' : 'RESERVE_ID';
+                btn.disabled = false;
+            }
+        }
+
+        async function fetchNeuralCredits(username) {
+            if(!username) return;
+            const coinEl = document.getElementById('hub-coins');
+            const statusEl = document.getElementById('sync-status');
+            try {
+                const response = await fetch(`http://localhost:3000/get-coins/${username}?t=${Date.now()}`);
+                if(!response.ok) throw new Error();
+                const data = await response.json();
+                coinEl.innerText = data.coins.toString().padStart(4, '0');
+                coinEl.style.color = "var(--gold)";
+                statusEl.innerText = "NEURAL_SYNC: 100% | STATUS: ONLINE";
+                statusEl.style.color = "var(--blue)";
+            } catch (e) {
+                coinEl.innerText = "OFFL";
+                coinEl.style.color = "var(--red)";
+                statusEl.innerText = "NEURAL_SYNC: 0% | SERVER_UNREACHABLE";
+                statusEl.style.color = "var(--red)";
+            }
+        }
+
+        function loadHub() {
+            const user = sessionStorage.getItem('titan_user');
+            const data = JSON.parse(sessionStorage.getItem('titan_data')) || { level: 1, wins: 0, streak: 0, xp: 0 };
+            
+            // Calculate XP needed for this specific level (standard RPG progression)
+            const xpNeeded = 100 + (data.level - 1) * 50; 
+            const visualPercent = (data.xp / xpNeeded) * 100;
+
+            document.getElementById('user-display').innerText = user.toUpperCase();
+            document.getElementById('lvl-num').innerText = data.level.toString().padStart(2, '0');
+            document.getElementById('hub-wins').innerText = data.wins.toString().padStart(2, '0');
+            document.getElementById('hub-streak').innerText = data.streak;
+            
+            // Updated to current_xp / xp_needed format
+            document.getElementById('xp-percent').innerText = `${data.xp}/${xpNeeded}`;
+            
+            setTimeout(() => { 
+                document.getElementById('level-progress').style.width = visualPercent + "%"; 
+            }, 500);
+
+            const titles = ["RECRUIT", "OPERATIVE", "ELITE", "TITAN", "GHOST"];
+            const titleIdx = Math.min(Math.floor(data.level / 5), titles.length - 1);
+            document.getElementById('rank-name').innerText = titles[titleIdx];
+            
+            fetchNeuralCredits(user);
+            setInterval(() => fetchNeuralCredits(user), 10000);
+            
+            if (typeof GlobalLeaderboard !== 'undefined') { 
+                GlobalLeaderboard.fetchAndRender(); 
+            }
+        }
+    </script>
+</body>
+</html>

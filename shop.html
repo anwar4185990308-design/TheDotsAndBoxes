@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TITAN OS: BLACK MARKET</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&family=Rajdhani:wght@500;700&family=Fira+Code:wght@400;700&display=swap');
+
+        :root { 
+            --bg: #050508; --red: #ff0055; --blue: #00f2ff; --gold: #ffcc00; 
+            --surface: rgba(10, 10, 15, 0.95);
+        }
+        * { box-sizing: border-box; user-select: none; }
+        body { margin: 0; background: var(--bg); color: white; font-family: 'Rajdhani'; overflow-x: hidden; }
+
+        /* --- CUSTOM NOTIFICATION SYSTEM --- */
+        #notification-overlay {
+            position: fixed; top: 20px; right: 20px; z-index: 9999;
+            display: flex; flex-direction: column; gap: 10px; pointer-events: none;
+        }
+        .toast {
+            min-width: 300px; padding: 15px 25px; background: rgba(0, 0, 0, 0.9);
+            border-left: 4px solid var(--blue); border-top: 1px solid #333;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5); font-family: 'Fira Code';
+            display: flex; align-items: center; justify-content: space-between;
+            animation: slideIn 0.3s ease-out forwards; pointer-events: auto;
+        }
+        .toast.error { border-left-color: var(--red); }
+        .toast.gold { border-left-color: var(--gold); }
+        
+        @keyframes slideIn {
+            from { transform: translateX(120%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes fadeOut {
+            to { transform: translateX(120%); opacity: 0; }
+        }
+
+        /* Header & Currency Display */
+        .shop-header { 
+            display: flex; justify-content: space-between; padding: 20px 50px; 
+            background: rgba(0,0,0,0.9); border-bottom: 2px solid #222; 
+            position: sticky; top: 0; z-index: 100; align-items: center; 
+        }
+        .currency-display { 
+            font-family: 'Orbitron'; font-size: 1.5rem; color: var(--gold); 
+            border: 1px solid var(--gold); padding: 5px 20px; 
+            box-shadow: inset 0 0 10px rgba(255, 204, 0, 0.2);
+        }
+        
+        .container { padding: 40px 50px; max-width: 1400px; margin: auto; }
+        h2 { font-family: 'Orbitron'; border-left: 4px solid var(--red); padding-left: 15px; margin-top: 50px; letter-spacing: 2px; }
+
+        /* Lootbox Grid */
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+        .card { background: var(--surface); border: 1px solid #333; padding: 30px; text-align: center; transition: 0.3s; position: relative; overflow: hidden; }
+        .card:hover { transform: translateY(-5px); border-color: white; box-shadow: 0 5px 20px rgba(0,0,0,0.8); }
+
+        /* Tiered Backgrounds */
+        .alpha { background: linear-gradient(145deg, #000, #111); }
+        .beta  { background: linear-gradient(145deg, #100, #200); border-color: #500; }
+        .gamma { background: linear-gradient(145deg, #102, #204); border-color: #408; }
+        .delta { background: linear-gradient(145deg, #010, #020); border-color: #040; }
+        .omega { background: linear-gradient(145deg, #110, #220); border-color: #550; }
+
+        .box-icon { font-size: 4rem; display: block; margin-bottom: 10px; filter: drop-shadow(0 0 10px rgba(255,255,255,0.2)); }
+        
+        /* Buttons */
+        .buy-btn { width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid #444; color: white; font-family: 'Orbitron'; cursor: pointer; margin-top: 15px; font-weight: 900; transition: 0.2s; }
+        .buy-btn:hover:not(:disabled) { background: var(--red); border-color: var(--red); color: white; }
+        .buy-btn:disabled { opacity: 0.2; cursor: not-allowed; }
+
+        /* Info Button */
+        .info-btn { position: absolute; top: 10px; right: 10px; background: none; border: 1px solid #555; color: #888; border-radius: 50%; width: 25px; height: 25px; cursor: help; font-family: 'Fira Code'; font-size: 12px; }
+        .info-btn:hover { color: white; border-color: white; background: rgba(255,255,255,0.1); }
+
+        /* Inventory Display */
+        .inv-grid { display: flex; flex-wrap: wrap; gap: 10px; background: rgba(0,0,0,0.5); padding: 20px; border: 1px solid #333; min-height: 100px; }
+        .inv-item { width: 60px; height: 60px; background: #000; border: 1px solid #222; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; cursor: pointer; position: relative; transition: 0.2s; }
+        .inv-item:hover { transform: scale(1.1); border-color: var(--blue); }
+        .inv-item.equipped { border: 2px solid #00ff00; background: #051505; box-shadow: 0 0 10px rgba(0,255,0,0.3); }
+        .equipped-badge { font-size: 0.5rem; color: #00ff00; position: absolute; bottom: 2px; font-family: 'Orbitron'; }
+
+        /* Reward Reveal Overlay */
+        #reveal { position: fixed; inset: 0; background: rgba(0,0,0,0.98); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 2000; }
+        .reveal-anim { animation: boxOpen 0.5s ease-out; }
+        @keyframes boxOpen { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <div id="notification-overlay"></div>
+
+    <div id="reveal">
+        <div id="rev-emoji" style="font-size: 12rem;" class="reveal-anim"></div>
+        <h1 style="font-family: 'Orbitron'; color: var(--blue); letter-spacing: 5px;">NEW DATA ACQUIRED</h1>
+        <button class="buy-btn" style="width: 250px" onclick="location.reload()">SYNC & CLOSE</button>
+    </div>
+
+    <div class="shop-header">
+        <div class="currency-display"><span id="coins">0000</span>₮</div>
+        <button class="buy-btn" style="width: auto; padding: 5px 25px; margin: 0;" onclick="location.href='index.html'">EXIT_TERMINAL</button>
+    </div>
+
+    <div class="container">
+        <h2>SUPPLY DROPS (ENCRYPTED)</h2>
+        <div class="grid" id="box-grid"></div>
+
+        <h2>SYSTEM UPGRADES</h2>
+        <div class="grid" id="upgrade-grid"></div>
+
+        <h2>ACTIVE SKINS (CLICK TO EQUIP)</h2>
+        <div class="inv-grid" id="inv-grid"></div>
+    </div>
+
+<script>
+    // --- CORE LOGIC ---
+    const user = sessionStorage.getItem('titan_user');
+    const API_URL = "http://localhost:3000";
+    let balance = 0;
+
+    const BOXES = {
+        "ALPHA": { cost: 100,  style: "alpha", icon: "📦", items: ["🔘", "🌑", "⬛", "💀", "🕸️"] },
+        "BETA":  { cost: 500,  style: "beta",  icon: "🔴", items: ["🏮", "🎯", "🧨", "👹", "🥊"] },
+        "GAMMA": { cost: 1250, style: "gamma", icon: "💠", items: ["🔮", "👾", "☂️", "🧬", "🎆"] },
+        "DELTA": { cost: 2500, style: "delta", icon: "🔋", items: ["🧪", "🧤", "💹", "🔫", "👽"] },
+        "OMEGA": { cost: 5000, style: "omega", icon: "👑", items: ["🔥", "☢️", "💎", "🐉", "❤️‍🔥"] }
+    };
+
+    const UPGRADES = [
+        { id: 'streak', name: 'STREAK SAVER', desc: 'Consumable. Protects streak on death.', cost: 1000 },
+        { id: 'xp', name: 'XP OVERCLOCK', desc: '+10% XP per level.', cost: 500 },
+        { id: 'coin', name: 'CREDIT MINER', desc: '+10% Credits per level.', cost: 750 }
+    ];
+
+    // --- CUSTOM NOTIFICATION LOGIC ---
+    function showNotify(msg, type = 'blue') {
+        const overlay = document.getElementById('notification-overlay');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.innerHTML = `<span>[SYSTEM]: ${msg}</span><button style="background:none; border:none; color:white; cursor:pointer;" onclick="this.parentElement.remove()">×</button>`;
+        
+        overlay.appendChild(toast);
+
+        // Auto remove after 5 seconds
+        setTimeout(() => {
+            toast.style.animation = 'fadeOut 0.3s forwards';
+            setTimeout(() => toast.remove(), 300);
+        }, 5000);
+    }
+
+    // Initialize Page
+    async function init() {
+        if(!user) {
+            showNotify("UNAUTHORIZED PILOT DETECTED.", "error");
+            setTimeout(() => location.href = 'login.html', 2000);
+            return;
+        }
+        try {
+            const res = await fetch(`${API_URL}/get-coins/${user}`);
+            const data = await res.json();
+            balance = data.coins || 0;
+            document.getElementById('coins').innerText = balance.toLocaleString();
+        } catch(e) { 
+            showNotify("CONNECTION LOST: SERVER OFFLINE", "error"); 
+        }
+        render();
+    }
+
+    function render() {
+        document.getElementById('box-grid').innerHTML = Object.entries(BOXES).map(([name, info]) => `
+            <div class="card ${info.style}">
+                <button class="info-btn" onclick="showNotify('${name} CONTAINS: ${info.items.join(' ')}', 'blue')">?</button>
+                <span class="box-icon">${info.icon}</span> 
+                <div style="font-family:Orbitron; font-weight:900; letter-spacing:1px;">${name}</div>
+                <div style="color:var(--gold); margin-bottom:10px;">${info.cost}₮</div>
+                <button class="buy-btn" onclick="buyBox('${name}')" ${balance < info.cost ? 'disabled' : ''}>PURCHASE</button>
+            </div>
+        `).join('');
+
+        let levels = JSON.parse(localStorage.getItem(`upgrades_${user}`)) || { streak: 0, xp: 0, coin: 0 };
+        document.getElementById('upgrade-grid').innerHTML = UPGRADES.map(u => `
+            <div class="card">
+                <div style="font-family:Orbitron; color:var(--blue); font-weight:900;">${u.name}</div>
+                <div style="font-size:0.8rem; color:#888; margin:10px 0;">${u.desc}</div>
+                <div style="font-family:Fira Code; font-size:1.1rem; color:white;">LVL: ${levels[u.id]}</div>
+                <button class="buy-btn" onclick="buyUpgrade('${u.id}', ${u.cost})" ${balance < u.cost ? 'disabled' : ''}>UPGRADE (${u.cost}₮)</button>
+            </div>
+        `).join('');
+
+        const inv = JSON.parse(localStorage.getItem(`inv_${user}`)) || [];
+        const currentSkin = localStorage.getItem(`skin_${user}`) || "";
+        document.getElementById('inv-grid').innerHTML = inv.map(item => `
+            <div class="inv-item ${item === currentSkin ? 'equipped' : ''}" onclick="selectSkin('${item}')">
+                ${item}
+                ${item === currentSkin ? '<span class="equipped-badge">ACTIVE</span>' : ''}
+            </div>
+        `).join('');
+    }
+
+    async function buyBox(name) {
+        const box = BOXES[name];
+        if (balance < box.cost) {
+            showNotify("INSUFFICIENT CREDITS", "error");
+            return;
+        }
+
+        balance -= box.cost;
+        document.getElementById('coins').innerText = balance.toLocaleString();
+
+        const item = box.items[Math.floor(Math.random() * box.items.length)];
+        let inv = JSON.parse(localStorage.getItem(`inv_${user}`)) || [];
+        if(!inv.includes(item)) inv.push(item);
+        localStorage.setItem(`inv_${user}`, JSON.stringify(inv));
+        
+        try {
+            await fetch(`${API_URL}/update-coins`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username: user, coins: balance })
+            });
+            await fetch(`${API_URL}/update-collection`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username: user, items: inv })
+            });
+            showNotify(`PURCHASE COMPLETE: ${name} OPENED`, "gold");
+        } catch(e) { 
+            showNotify("SYNC FAILURE: CHECK SERVER", "error"); 
+        }
+
+        document.getElementById('reveal').style.display = 'flex';
+        document.getElementById('rev-emoji').innerText = item;
+    }
+
+    async function buyUpgrade(id, cost) {
+        if (balance < cost) return;
+        balance -= cost;
+        document.getElementById('coins').innerText = balance.toLocaleString();
+
+        let levels = JSON.parse(localStorage.getItem(`upgrades_${user}`)) || { streak: 0, xp: 0, coin: 0 };
+        levels[id]++;
+        localStorage.setItem(`upgrades_${user}`, JSON.stringify(levels));
+        
+        await fetch(`${API_URL}/update-coins`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ username: user, coins: balance })
+        });
+        
+        showNotify(`UPGRADE INSTALLED: ${id.toUpperCase()}`, "gold");
+        render();
+    }
+
+    function selectSkin(skin) {
+        localStorage.setItem(`skin_${user}`, skin);
+        showNotify(`PILOT SKIN UPDATED TO: ${skin}`);
+        render();
+    }
+
+    init();
+</script>
+</body>
+</html>

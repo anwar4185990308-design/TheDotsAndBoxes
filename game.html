@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TITAN_OS: COMBAT_CORE</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&family=Rajdhani:wght@500;700&family=Fira+Code:wght@400;700&display=swap');
+        :root { --bg: #050508; --red: #ff0055; --blue: #00f2ff; --gold: #ffcc00; --xp-color: #00ff66; --glow: rgba(255, 0, 85, 0.5); --boss-glow: 0px 0px 30px red; }
+        * { box-sizing: border-box; touch-action: manipulation; user-select: none; }
+        body, html { margin: 0; padding: 0; background-color: var(--bg); color: white; font-family: 'Rajdhani', sans-serif; height: 100vh; width: 100vw; overflow: hidden; }
+        #bg-canvas { position: fixed; inset: 0; z-index: -1; opacity: 0.4; }
+        .grid-overlay { position: fixed; inset: 0; background-image: linear-gradient(rgba(0,242,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,242,255,0.03) 1px, transparent 1px); background-size: 60px 60px; pointer-events: none; }
+        #game-interface { position: absolute; width: 100%; height: 100%; display: flex; flex-direction: column; }
+        #particle-canvas { position: absolute; inset: 0; pointer-events: none; z-index: 2000; }
+        
+        .rank-bar { height: 45px; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; font-family: 'Orbitron'; font-size: 0.7rem; letter-spacing: 5px; color: var(--blue); z-index: 100; border-bottom: 2px solid #111; }
+        .ui-top { height: 120px; display: flex; justify-content: space-evenly; align-items: center; z-index: 10; }
+        .player-card { padding: 20px 40px; background: rgba(0,0,0,0.8); border: 2px solid #222; min-width: 220px; text-align: center; position: relative; transition: 0.3s; }
+        .player-card.active.p1 { border-color: var(--red); box-shadow: 0 0 40px var(--glow); transform: scale(1.05); }
+        .player-card.active.p2 { border-color: var(--blue); box-shadow: 0 0 40px rgba(0, 242, 255, 0.3); transform: scale(1.05); }
+        .score { font-size: 4rem; font-weight: 900; font-family: 'Orbitron'; line-height: 1; display: block; }
+        
+        .stage { flex: 1; display: flex; justify-content: center; align-items: center; position: relative; }
+        #board { display: grid; background: #000; padding: 15px; border: 2px solid #1a1a1a; box-shadow: 0 0 50px rgba(0,0,0,1); }
+        .dot { width: 12px; height: 12px; background: #444; border-radius: 50%; z-index: 3; }
+        .line { background: #1a1a1a; cursor: pointer; z-index: 2; transition: background 0.2s, box-shadow 0.2s; border-radius: 2px; }
+        .line:hover:not(.taken) { background: #333; }
+        .line.taken.p1 { background: var(--red) !important; box-shadow: 0 0 20px var(--red); }
+        .line.taken.p2 { background: var(--blue) !important; box-shadow: 0 0 20px var(--blue); }
+        
+        .box { transition: background 0.4s, opacity 0.4s; opacity: 0; pointer-events: none; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
+        .box.filled { opacity: 0.9 !important; } 
+        .box.filled.p1 { background: var(--red) !important; box-shadow: inset 0 0 40px #600; text-shadow: 0 0 10px black; }
+        .box.filled.p2 { background: var(--blue) !important; box-shadow: inset 0 0 40px #004; }
+
+        #boss-overlay { position: absolute; inset: 0; display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; background: radial-gradient(circle, rgba(30,0,0,0.98) 0%, #000 100%); }
+        #ascii-skull { font-family: 'Fira Code'; color: var(--red); font-size: 10px; line-height: 9px; white-space: pre; z-index: 2; text-shadow: var(--boss-glow); text-align: center; }
+        .pixel-target { position: absolute; width: 60px; height: 60px; background: var(--red); border: 5px solid #fff; border-radius: 50%; z-index: 2500; box-shadow: 0 0 50px var(--red); cursor: crosshair; }
+        
+        #info-panel, #loss-panel { position: fixed; inset: 0; background: #000; z-index: 5000; display: none; flex-direction: column; align-items: center; justify-content: center; border: 15px solid var(--xp-color); box-shadow: inset 0 0 120px var(--xp-color); }
+        #loss-panel { border-color: var(--red); box-shadow: inset 0 0 120px var(--red); }
+        .escape-title { font-family: 'Orbitron'; font-size: 4rem; color: var(--xp-color); text-shadow: 0 0 40px var(--xp-color); margin: 0; }
+        .loss-title { font-family: 'Orbitron'; font-size: 4rem; color: var(--red); text-shadow: 0 0 40px var(--red); margin: 0; }
+        .info-row { width: 550px; padding: 15px; border-bottom: 2px solid #222; font-family: 'Fira Code'; display: flex; justify-content: space-between; font-size: 1.2rem; }
+        
+        button.hub-btn { margin-top:30px; background:var(--xp-color); color:black; padding:20px 60px; font-family:'Orbitron'; border:none; cursor:pointer; font-weight:900; font-size:1.2rem; transition: 0.3s; }
+        button.hub-btn:hover { box-shadow: 0 0 30px var(--xp-color); transform: scale(1.05); }
+        
+        @keyframes shake { 0% { transform: translate(1px, 1px) rotate(0deg); } 10% { transform: translate(-1px, -2px) rotate(-1deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 40% { transform: translate(3px, 2px) rotate(0deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); } }
+    </style>
+</head>
+<body onload="initGame();">
+
+    <canvas id="bg-canvas"></canvas>
+    <div class="grid-overlay"></div>
+
+    <div id="game-interface">
+        <div class="rank-bar">THREAT_LEVEL: CRITICAL | SYNC_RATE: 98% | PILOT: <span id="pilot-name">---</span></div>
+        <canvas id="particle-canvas"></canvas>
+
+        <div class="ui-top">
+            <div id="p1-card" class="player-card p1 active"><span id="s1" class="score">0</span><small>RED_PILOT</small></div>
+            <div id="p2-card" class="player-card p2"><span id="s2" class="score">0</span><small>BLUE_PILOT</small></div>
+        </div>
+
+        <div class="stage">
+            <div id="board"></div>
+
+            <div id="boss-overlay">
+                <div id="ascii-skull">
+                  XXXXXX
+                 XXXXXXXX
+                XX  XX  XX
+                XX  XX  XX
+                 XXXXXXXX
+                  XX  XX
+                  XXXXXX
+                NEURAL_CORRUPTION
+                </div>
+                <div style="font-family:'Orbitron'; font-size:5rem; margin:25px; text-shadow:0 0 30px red;" id="b-timer">30.00</div>
+                <div style="font-family:'Orbitron'; color:var(--gold); font-size:1.8rem; letter-spacing:3px;">ATTACKS LANDED: <span id="px-score">0</span> / 15</div>
+            </div>
+
+            <div id="info-panel">
+                <div class="escape-title">YOU ESCAPED</div>
+                <div class="info-row"><span>PILOT_ID:</span><span id="final-id" style="color:var(--blue)">---</span></div>
+                <div class="info-row"><span>NEW_LVL:</span><span id="stat-lvl" style="color:var(--gold)">--</span></div>
+                <div class="info-row"><span>CREDITS:</span><span id="stat-coins" style="color:var(--gold)">--</span></div>
+                <div class="info-row"><span>XP_GAIN:</span><span id="stat-xp" style="color:var(--xp-color)">--</span></div>
+                <button class="hub-btn" onclick="window.location.href='index.html'">RETURN TO HUB</button>
+            </div>
+
+            <div id="loss-panel">
+                <div class="loss-title">SYSTEM FAILURE</div>
+                <p style="font-family:'Fira Code'; color:var(--red); font-size:1.5rem;">NEURAL_LINK_SEVERED</p>
+                <button class="hub-btn" style="background:var(--red); color:white;" onclick="window.location.href='index.html'">REBOOT SYSTEM</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // --- CONFIG & STATE ---
+    const DOTS = 8;
+    const boardSize = (DOTS-1) * (DOTS-1);
+    const currentUser = sessionStorage.getItem('titan_user');
+    const API_URL = "http://localhost:3000";
+    const MAX_LEVEL = 10000;
+    
+    let turn = 1; 
+    let scores = { 1: 0, 2: 0 };
+    let linesTaken = {};
+    let gameEnded = false;
+    let ashMode = false;
+    let bossTimeLeft = 30.0;
+    let attacksLanded = 0;
+    let particles = [];
+    let mySkin = localStorage.getItem(`skin_${currentUser}`) || "🔘";
+
+    // --- AUDIO SYSTEM (SYNTHETIC) ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(freq, type, duration, vol = 0.1) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // --- GOD KEY (F6) ---
+    window.addEventListener('keydown', (e) => {
+        if (e.key === "F6" && !gameEnded) {
+            playSound(1000, 'square', 0.5, 0.2);
+            const boxes = document.querySelectorAll('.box:not(.filled)');
+            boxes.forEach(box => {
+                box.classList.add('filled', 'p1');
+                box.innerText = mySkin;
+                scores[1]++;
+            });
+            document.querySelectorAll('.line').forEach(l => l.classList.add('taken', 'p1'));
+            document.getElementById('s1').innerText = scores[1];
+            triggerBossFight();
+        }
+    });
+
+    // --- INITIALIZATION ---
+    function initGame() {
+        if (!currentUser) { window.location.href = "index.html"; return; }
+        document.getElementById('pilot-name').innerText = currentUser.toUpperCase();
+        initLayout();
+        initMatrix();
+        animateParticles();
+    }
+
+    function initLayout() {
+        const b = document.getElementById('board');
+        const s = document.querySelector('.stage');
+        const availableSize = Math.min(s.offsetHeight - 40, s.offsetWidth - 40);
+        const dW = 12;
+        const bW = Math.floor((availableSize - (DOTS * dW)) / (DOTS - 1));
+        b.style.gridTemplateColumns = `repeat(${DOTS-1}, ${dW}px ${bW}px) ${dW}px`;
+        b.style.gridTemplateRows = `repeat(${DOTS-1}, ${dW}px ${bW}px) ${dW}px`;
+        b.innerHTML = '';
+        for (let r=0; r < 2*DOTS-1; r++) {
+            for (let c=0; c < 2*DOTS-1; c++) {
+                const cell = document.createElement('div');
+                if (r%2===0 && c%2===0) cell.className = 'dot';
+                else if (r%2===0 && c%2!==0) { cell.className = 'line'; setupLine(cell, `h-${r}-${c}`); }
+                else if (r%2!==0 && c%2===0) { cell.className = 'line'; setupLine(cell, `v-${r}-${c}`); }
+                else { cell.className = 'box'; cell.id = `box-${r}-${c}`; }
+                b.appendChild(cell);
+            }
+        }
+    }
+
+    function setupLine(el, id) {
+        el.dataset.id = id;
+        el.onclick = () => {
+            if (el.classList.contains('taken') || gameEnded || turn !== 1) return;
+            processMove(el, id);
+        };
+    }
+
+    function processMove(el, id) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        el.classList.add('taken', turn === 1 ? 'p1' : 'p2');
+        linesTaken[id] = turn;
+        playSound(turn === 1 ? 440 : 330, 'square', 0.1); 
+        const earned = checkBoxes(); 
+        if (earned > 0) {
+            playSound(880, 'sine', 0.3, 0.2);
+            const rect = el.getBoundingClientRect();
+            explode(rect.left, rect.top, turn===1?'#ff0055':'#00f2ff');
+            if (scores[1] + scores[2] === boardSize) triggerBossFight();
+            else if (turn === 2) setTimeout(aiMove, 600);
+        } else {
+            turn = turn === 1 ? 2 : 1;
+            document.getElementById('p1-card').classList.toggle('active');
+            document.getElementById('p2-card').classList.toggle('active');
+            if (turn === 2) setTimeout(aiMove, 600);
+        }
+    }
+
+    function checkBoxes() {
+        let earned = 0;
+        for (let r = 1; r < 2 * DOTS - 1; r += 2) {
+            for (let c = 1; c < 2 * DOTS - 1; c += 2) {
+                const box = document.getElementById(`box-${r}-${c}`);
+                if (box && !box.classList.contains('filled')) {
+                    if (linesTaken[`h-${r-1}-${c}`] && linesTaken[`h-${r+1}-${c}`] && linesTaken[`v-${r}-${c-1}`] && linesTaken[`v-${r}-${c+1}`]) {
+                        box.classList.add('filled', turn === 1 ? 'p1' : 'p2');
+                        if (turn === 1) box.innerText = mySkin;
+                        scores[turn]++;
+                        earned++;
+                    }
+                }
+            }
+        }
+        document.getElementById('s1').innerText = scores[1];
+        document.getElementById('s2').innerText = scores[2];
+        return earned;
+    }
+
+    function aiMove() {
+        if (gameEnded || turn === 1) return;
+        const allLines = Array.from(document.querySelectorAll('.line:not(.taken)'));
+        if (allLines.length === 0) return;
+        let move = findCompletingMove() || findSafeMove(allLines);
+        if (!move) move = allLines[Math.floor(Math.random() * allLines.length)];
+        processMove(move, move.dataset.id);
+    }
+
+    function findCompletingMove() {
+        const lines = document.querySelectorAll('.line:not(.taken)');
+        for (let l of lines) { if (checkPotentialBoxes(l.dataset.id).some(count => count === 3)) return l; }
+        return null;
+    }
+
+    function findSafeMove(allLines) {
+        const shuffled = allLines.sort(() => Math.random() - 0.5);
+        for (let l of shuffled) { if (!checkPotentialBoxes(l.dataset.id).some(count => count === 2)) return l; }
+        return null;
+    }
+
+    function checkPotentialBoxes(lineId) {
+        const parts = lineId.split('-');
+        const type = parts[0], r = parseInt(parts[1]), c = parseInt(parts[2]);
+        let counts = [];
+        if (type === 'h') { counts.push(countSides(r - 1, c), countSides(r + 1, c)); }
+        else { counts.push(countSides(r, c - 1), countSides(r, c + 1)); }
+        return counts.filter(n => n !== null);
+    }
+
+    function countSides(r, c) {
+        if (!document.getElementById(`box-${r}-${c}`)) return null;
+        let count = 0;
+        if (linesTaken[`h-${r-1}-${c}`]) count++;
+        if (linesTaken[`h-${r+1}-${c}`]) count++;
+        if (linesTaken[`v-${r}-${c-1}`]) count++;
+        if (linesTaken[`v-${r}-${c+1}`]) count++;
+        return count;
+    }
+
+    function triggerBossFight() {
+        gameEnded = true; 
+        if (scores[1] <= scores[2]) { showLoss(); return; } 
+        ashMode = true; 
+        document.getElementById('boss-overlay').style.display = 'flex';
+        document.body.style.animation = "shake 0.1s infinite";
+        playSound(100, 'sawtooth', 1, 0.3);
+        const timer = setInterval(() => {
+            bossTimeLeft -= 0.05;
+            document.getElementById('b-timer').innerText = Math.max(0, bossTimeLeft).toFixed(2);
+            if (bossTimeLeft <= 0) { clearInterval(timer); if (attacksLanded < 15) showLoss(); }
+            if (!ashMode) clearInterval(timer);
+        }, 50);
+        const spawner = setInterval(() => { if (ashMode && attacksLanded < 15) spawnTarget(); else clearInterval(spawner); }, 1000);
+    }
+
+    function spawnTarget() {
+        const t = document.createElement('div');
+        t.className = 'pixel-target'; 
+        t.style.left = Math.random()*80+10+'%'; 
+        t.style.top = Math.random()*80+10+'%';
+        t.onclick = () => { 
+            attacksLanded++; 
+            playSound(600 + (attacksLanded * 20), 'triangle', 0.1);
+            document.getElementById('px-score').innerText = attacksLanded; 
+            t.remove(); 
+            if(attacksLanded >= 15) showEscape(); 
+        };
+        document.getElementById('boss-overlay').appendChild(t);
+        setTimeout(() => t.remove(), 1500);
+    }
+
+    // --- UPDATED WIN SYSTEM ---
+    async function showEscape() {
+        ashMode = false;
+        document.body.style.animation = "none";
+        document.getElementById('boss-overlay').style.display = 'none';
+        document.getElementById('info-panel').style.display = 'flex';
+        playSound(1200, 'sine', 0.5, 0.2);
+
+        // 1. Calculate Rewards
+        const upgrades = JSON.parse(localStorage.getItem(`upgrades_${currentUser}`)) || {xp:0, coin:0};
+        const xpEarned = Math.floor(scores[1] * 10 * (1 + upgrades.xp * 0.1));
+        const coinsEarned = Math.floor(10 * (1 + upgrades.coin * 0.1));
+
+        try {
+            // 2. Fetch current user data from Session
+            let data = JSON.parse(sessionStorage.getItem('titan_data')) || { level: 1, xp: 0, wins: 0, streak: 0 };
+            
+            // 3. Update Win Stats
+            data.wins = (data.wins || 0) + 1;
+            data.streak = (data.streak || 0) + 1;
+            data.xp += xpEarned;
+            
+            // 4. Level Up Logic
+            while(data.xp >= (data.level * 100) && data.level < MAX_LEVEL) { 
+                data.xp -= (data.level * 100); 
+                data.level++; 
+            }
+
+            // 5. Update UI Immediately
+            document.getElementById('final-id').innerText = currentUser;
+            document.getElementById('stat-lvl').innerText = data.level;
+            document.getElementById('stat-xp').innerText = `+${xpEarned}`;
+            document.getElementById('stat-coins').innerText = `+${coinsEarned}₮`;
+
+            // 6. Save Updated Data to Session (Hub will use this)
+            sessionStorage.setItem('titan_data', JSON.stringify(data));
+
+            // 7. Sync to Server (Backend)
+            await fetch(`${API_URL}/save`, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ username: currentUser, data: data }) 
+            });
+
+            // 8. Update Credits/Coins in Backend
+            const cRes = await fetch(`${API_URL}/get-coins/${currentUser}`);
+            if (cRes.ok) {
+                const cData = await cRes.json();
+                const newCoinTotal = (cData.coins || 0) + coinsEarned;
+                await fetch(`${API_URL}/update-coins`, { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({ username: currentUser, coins: newCoinTotal }) 
+                });
+            }
+
+        } catch(e) { console.error("WIN_SYSTEM_ERROR: ", e); }
+    }
+
+    function showLoss() { ashMode = false; document.body.style.animation = "none"; document.getElementById('boss-overlay').style.display = 'none'; document.getElementById('loss-panel').style.display = 'flex'; playSound(80, 'sawtooth', 0.8, 0.3); }
+
+    function initMatrix() {
+        const c = document.getElementById('bg-canvas'), x = c.getContext('2d');
+        c.width = window.innerWidth; c.height = window.innerHeight;
+        const drops = Array(Math.floor(c.width/20)).fill(1);
+        setInterval(() => {
+            x.fillStyle = "rgba(5,5,8,0.1)"; x.fillRect(0,0,c.width,c.height);
+            x.fillStyle = "#00f2ff"; x.font = "15px monospace";
+            drops.forEach((d, i) => { x.fillText(Math.floor(Math.random()*2), i*20, d*20); if (d*20 > c.height && Math.random() > 0.975) drops[i] = 0; drops[i]++; });
+        }, 50);
+    }
+    function explode(x, y, color) { for(let i=0; i<15; i++) { particles.push({ x, y, c: color, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, a: 1 }); } }
+    function animateParticles() {
+        const c = document.getElementById('particle-canvas'), x = c.getContext('2d');
+        c.width = window.innerWidth; c.height = window.innerHeight;
+        x.clearRect(0,0,c.width,c.height);
+        particles.forEach((p, i) => { p.x += p.vx; p.y += p.vy; p.a -= 0.02; x.globalAlpha = p.a; x.fillStyle = p.c; x.fillRect(p.x, p.y, 4, 4); if(p.a <= 0) particles.splice(i, 1); });
+        requestAnimationFrame(animateParticles);
+    }
+</script>
+</body>
+</html>

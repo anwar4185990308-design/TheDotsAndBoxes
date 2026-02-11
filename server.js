@@ -4,18 +4,23 @@ const cors = require('cors');
 const path = require('path');
 const app = express();
 
-// --- CONFIGURATION & MIDDLEWARE ---
+// --- PRE-START CONFIG ---
 app.use(express.json());
 app.use(cors());
-// Serves your HTML/JS/CSS files from the root directory
 app.use(express.static(path.join(__dirname, './')));
 
-// --- DATABASE CONNECTION ---
-// IMPORTANT: Set your MONGO_URI in Render Environment Variables
-const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://anamuyt66tt_db_user:wbEIKDFt6Fl8YSAO@cluster0.my8z8ya.mongodb.net/?appName=Cluster0";
-mongoose.connect(MONGO_URI)
-    .then(() => console.log(">> SYSTEM: DATABASE_CONNECTED"))
-    .catch(err => console.error(">> SYSTEM: DATABASE_CONNECTION_ERROR", err));
+// --- DATABASE CONNECTION (With Error Handling) ---
+// REPLACE THIS STRING if not using Environment Variables
+const MONGO_URI = process.env.MONGO_URI || "your_mongodb_connection_string_here";
+
+mongoose.connect(MONGO_URI, {
+    serverSelectionTimeoutMS: 5000 // Give up after 5 seconds instead of hanging
+})
+.then(() => console.log(">> [SYSTEM]: DATABASE_LINK_SUCCESS"))
+.catch(err => {
+    console.error(">> [SYSTEM]: DATABASE_LINK_FAILURE");
+    console.error(err.message);
+});
 
 // --- USER SCHEMA ---
 const userSchema = new mongoose.Schema({
@@ -28,29 +33,16 @@ const userSchema = new mongoose.Schema({
         streak: { type: Number, default: 0 },
         xp: { type: Number, default: 0 }
     }
-}, { minimize: false }); // Prevents DB from stripping 0 values
+}, { minimize: false });
 
 const User = mongoose.model('User', userSchema);
 
-// --- API ENDPOINTS ---
+// --- API ROUTES ---
 
-// 1. SAVE PROGRESS (The "Old System" Restored & Fixed)
-app.post('/save-progress', async (req, res) => {
-    const { username, files } = req.body;
-    try {
-        const updatedUser = await User.findOneAndUpdate(
-            { username: username },
-            { $set: { files: files } },
-            { new: true, upsert: true }
-        );
-        res.json({ success: true, message: "DATA_VAULT_UPDATED" });
-    } catch (err) {
-        console.error("SAVE_ERROR:", err);
-        res.status(500).json({ success: false, message: "WRITE_FAILURE" });
-    }
-});
+// Health Check (Use this to test if server is even awake)
+app.get('/ping', (req, res) => res.send('PONG'));
 
-// 2. LEADERBOARD (Optimized Sorting)
+// Leaderboard
 app.get('/leaderboard', async (req, res) => {
     try {
         const topPilots = await User.find({}, 'username files')
@@ -64,56 +56,58 @@ app.get('/leaderboard', async (req, res) => {
         }));
         res.json(formatted);
     } catch (err) {
+        res.status(500).json([]);
+    }
+});
+
+// Save System
+app.post('/save-progress', async (req, res) => {
+    const { username, files } = req.body;
+    if (!username || !files) return res.status(400).json({ success: false });
+
+    try {
+        await User.findOneAndUpdate(
+            { username: username },
+            { $set: { files: files } },
+            { new: true, upsert: true }
+        );
+        res.json({ success: true });
+    } catch (err) {
         res.status(500).json({ success: false });
     }
 });
 
-// 3. AUTH: LOGIN
+// Auth: Login
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
     try {
         const user = await User.findOne({ username, password });
-        if (user) {
-            res.json({ success: true, data: user.files });
-        } else {
-            res.json({ success: false, message: "INVALID_CREDENTIALS" });
-        }
+        if (user) res.json({ success: true, data: user.files });
+        else res.json({ success: false, message: "INVALID_CREDENTIALS" });
     } catch (err) {
         res.status(500).json({ success: false });
     }
 });
 
-// 4. AUTH: SIGNUP
+// Auth: Signup
 app.post('/signup', async (req, res) => {
     const { username, password } = req.body;
     try {
-        const newUser = new User({ 
-            username, 
-            password, 
-            files: { levels: 1, coin: 500, wins: 0, streak: 0, xp: 0 } 
-        });
+        const newUser = new User({ username, password, files: { levels: 1, coin: 500, wins: 0, streak: 0, xp: 0 } });
         await newUser.save();
         res.json({ success: true, data: newUser.files });
     } catch (err) {
-        res.json({ success: false, message: "ID_ALREADY_EXISTS" });
+        res.json({ success: false, message: "USER_EXISTS" });
     }
 });
 
-// 5. GET PROFILE (For page refreshes)
-app.get('/get-profile/:username', async (req, res) => {
-    try {
-        const user = await User.findOne({ username: req.params.username });
-        if (user) res.json({ success: true, data: user.files });
-        else res.status(404).json({ success: false });
-    } catch (err) {
-        res.status(500).json({ success: false });
-    }
-});
-
-// CATCH-ALL: Serves index.html for any unknown route (Important for Single Page feel)
+// Static Fallback
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Start Server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`TITAN_OS_SERVER: ONLINE ON PORT ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`>> [SYSTEM]: TITAN_OS_ACTIVE ON PORT ${PORT}`);
+});

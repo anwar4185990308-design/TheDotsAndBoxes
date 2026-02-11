@@ -13,7 +13,7 @@ app.use(cors());
 app.use(express.static(path.join(__dirname, './')));
 
 // --- MONGODB CONNECTION ---
-const MONGO_URI = process.env.MONGO_URI || "your_mongodb_connection_string_here";
+const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://anamuyt66tt_db_user:wbEIKDFt6Fl8YSAO@cluster0.my8z8ya.mongodb.net/?appName=Cluster0";
 mongoose.connect(MONGO_URI)
     .then(() => console.log("CORE_DATABASE: LINKED"))
     .catch(err => console.error("CORE_DATABASE: LINK_FAILURE", err));
@@ -109,3 +109,4 @@ app.post('/signup', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`TITAN_OS_SERVER: ACTIVE ON PORT ${PORT}`));
+

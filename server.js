@@ -4,17 +4,18 @@ const cors = require('cors');
 const path = require('path');
 const app = express();
 
-// --- MIDDLEWARE ---
+// --- CONFIGURATION & MIDDLEWARE ---
 app.use(express.json());
 app.use(cors());
+// Serves your HTML/JS/CSS files from the root directory
 app.use(express.static(path.join(__dirname, './')));
 
-// --- MONGODB CONNECTION ---
-// Ensure you have your MongoDB URI in your Render Environment Variables
+// --- DATABASE CONNECTION ---
+// IMPORTANT: Set your MONGO_URI in Render Environment Variables
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://anamuyt66tt_db_user:wbEIKDFt6Fl8YSAO@cluster0.my8z8ya.mongodb.net/?appName=Cluster0";
 mongoose.connect(MONGO_URI)
-    .then(() => console.log("DATABASE: NEURAL_LINK_ESTABLISHED"))
-    .catch(err => console.error("DATABASE: LINK_FAILURE", err));
+    .then(() => console.log(">> SYSTEM: DATABASE_CONNECTED"))
+    .catch(err => console.error(">> SYSTEM: DATABASE_CONNECTION_ERROR", err));
 
 // --- USER SCHEMA ---
 const userSchema = new mongoose.Schema({
@@ -27,47 +28,29 @@ const userSchema = new mongoose.Schema({
         streak: { type: Number, default: 0 },
         xp: { type: Number, default: 0 }
     }
-}, { minimize: false }); // Ensures empty objects/fields are saved
+}, { minimize: false }); // Prevents DB from stripping 0 values
 
 const User = mongoose.model('User', userSchema);
 
-// --- ACCOUNT & SAVE SYSTEM ---
+// --- API ENDPOINTS ---
 
-// 1. SAVE PROGRESS (The "Old Way" - Direct Object Update)
+// 1. SAVE PROGRESS (The "Old System" Restored & Fixed)
 app.post('/save-progress', async (req, res) => {
-    const { username, files } = req.body; // Expecting the 'files' object directly
+    const { username, files } = req.body;
     try {
         const updatedUser = await User.findOneAndUpdate(
             { username: username },
             { $set: { files: files } },
-            { new: true }
+            { new: true, upsert: true }
         );
-        if (updatedUser) {
-            res.json({ success: true, message: "DATA_RESTORED_TO_CORE" });
-        } else {
-            res.status(404).json({ success: false, message: "PILOT_NOT_FOUND" });
-        }
+        res.json({ success: true, message: "DATA_VAULT_UPDATED" });
     } catch (err) {
         console.error("SAVE_ERROR:", err);
-        res.status(500).json({ success: false, message: "CORE_WRITE_FAILURE" });
+        res.status(500).json({ success: false, message: "WRITE_FAILURE" });
     }
 });
 
-// 2. GET PROFILE
-app.get('/get-profile/:username', async (req, res) => {
-    try {
-        const user = await User.findOne({ username: req.params.username });
-        if (user) {
-            res.json({ success: true, data: user.files });
-        } else {
-            res.status(404).json({ success: false });
-        }
-    } catch (err) {
-        res.status(500).json({ success: false });
-    }
-});
-
-// 3. LEADERBOARD SYSTEM
+// 2. LEADERBOARD (Optimized Sorting)
 app.get('/leaderboard', async (req, res) => {
     try {
         const topPilots = await User.find({}, 'username files')
@@ -85,7 +68,7 @@ app.get('/leaderboard', async (req, res) => {
     }
 });
 
-// 4. AUTH SYSTEM
+// 3. AUTH: LOGIN
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -100,6 +83,7 @@ app.post('/login', async (req, res) => {
     }
 });
 
+// 4. AUTH: SIGNUP
 app.post('/signup', async (req, res) => {
     const { username, password } = req.body;
     try {
@@ -115,10 +99,21 @@ app.post('/signup', async (req, res) => {
     }
 });
 
-// Serve index.html by default
+// 5. GET PROFILE (For page refreshes)
+app.get('/get-profile/:username', async (req, res) => {
+    try {
+        const user = await User.findOne({ username: req.params.username });
+        if (user) res.json({ success: true, data: user.files });
+        else res.status(404).json({ success: false });
+    } catch (err) {
+        res.status(500).json({ success: false });
+    }
+});
+
+// CATCH-ALL: Serves index.html for any unknown route (Important for Single Page feel)
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`TITAN_OS: ONLINE ON PORT ${PORT}`));
+app.listen(PORT, () => console.log(`TITAN_OS_SERVER: ONLINE ON PORT ${PORT}`));

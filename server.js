@@ -9,7 +9,7 @@ app.use(cors());
 app.use(express.static('./')); // Serves your HTML/JS files
 
 // --- MONGO CONFIG ---
-const uri = "YOUR_MONGODB_CONNECTION_STRING_HERE"; 
+const uri = "mongodb+srv://anamuyt66tt_db_user:wbEIKDFt6Fl8YSAO@cluster0.my8z8ya.mongodb.net/?appName=Cluster0"; 
 const client = new MongoClient(uri);
 
 async function connectDB() {
@@ -84,3 +84,4 @@ app.post('/save-progress', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`>> SYSTEM_READY_ON_PORT_${PORT}`));
+

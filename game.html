@@ -21,6 +21,19 @@
         .player-card.active.p2 { border-color: var(--blue); box-shadow: 0 0 40px rgba(0, 242, 255, 0.3); transform: scale(1.05); }
         .score { font-size: 4rem; font-weight: 900; font-family: 'Orbitron'; line-height: 1; display: block; }
         
+        /* QUEST SIDEBAR - NEW ADDITION */
+        #quest-sidebar {
+            position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
+            width: 220px; pointer-events: none; z-index: 50; display: flex; flex-direction: column; gap: 10px;
+        }
+        .hud-quest {
+            background: rgba(0,0,0,0.7); border-right: 2px solid var(--blue); padding: 10px;
+            font-family: 'Fira Code'; font-size: 0.7rem; color: #aaa; text-align: right;
+            transition: 0.3s; opacity: 0.7;
+        }
+        .hud-quest.active { border-color: var(--gold); color: white; opacity: 1; text-shadow: 0 0 5px var(--gold); }
+        .hud-quest.completed { border-color: var(--xp-color); color: var(--xp-color); text-decoration: line-through; }
+
         .stage { flex: 1; display: flex; justify-content: center; align-items: center; position: relative; }
         #board { display: grid; background: #000; padding: 15px; border: 2px solid #1a1a1a; box-shadow: 0 0 50px rgba(0,0,0,1); }
         .dot { width: 12px; height: 12px; background: #444; border-radius: 50%; z-index: 3; }
@@ -64,6 +77,11 @@
             <div id="p2-card" class="player-card p2"><span id="s2" class="score">0</span><small>BLUE_PILOT</small></div>
         </div>
 
+        <div id="quest-sidebar">
+            <div style="text-align:right; font-family:'Orbitron'; color:var(--blue); font-size:0.8rem; border-bottom:1px solid var(--blue); padding-bottom:5px;">TACTICAL_OBJECTIVES</div>
+            <div id="hud-quest-list"></div>
+        </div>
+
         <div class="stage">
             <div id="board"></div>
 
@@ -99,16 +117,18 @@
         </div>
     </div>
 
-<script src="account.js"></script>
-
 <script>
     // --- CONFIG & STATE ---
     const DOTS = 8;
     const boardSize = (DOTS-1) * (DOTS-1);
     const currentUser = sessionStorage.getItem('titan_user');
-    const API_BASE = window.location.origin; 
+    const API_URL = window.location.origin;
     const MAX_LEVEL = 10000;
     
+    // LOAD PLAYER DATA FOR PRESTIGE & QUESTS
+    let localData = JSON.parse(sessionStorage.getItem('titan_data')) || { level: 1, prestige: 0 };
+    let prestigeMult = 1 + ((localData.prestige || 0) * 0.5); // +50% XP per Prestige level
+
     let turn = 1; 
     let scores = { 1: 0, 2: 0 };
     let linesTaken = {};
@@ -117,11 +137,13 @@
     let bossTimeLeft = 30.0;
     let attacksLanded = 0;
     let particles = [];
-    let mySkin = localStorage.getItem(`skin_${currentUser}`) || "🔘";
+    
+    let mySkin = "🔘"; 
+    if(localData.inventory && localData.inventory.includes('skin_gold')) mySkin = "👑";
 
-    // --- AUDIO SYSTEM ---
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     function playSound(freq, type, duration, vol = 0.1) {
+        if (audioCtx.state === 'suspended') return;
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.type = type;
@@ -134,7 +156,60 @@
         osc.stop(audioCtx.currentTime + duration);
     }
 
-    // --- GOD KEY (F6) ---
+    // --- INIT ---
+    function initGame() {
+        if (!currentUser) { window.location.href = "index.html"; return; }
+        document.getElementById('pilot-name').innerText = currentUser.toUpperCase();
+        initLayout();
+        initMatrix();
+        animateParticles();
+        initQuestHUD(); // Load quests into HUD
+    }
+
+    // --- QUEST LOGIC IN-GAME ---
+    let activeQuests = [];
+    function initQuestHUD() {
+        const key = `titan_quests_${currentUser}`;
+        const qData = JSON.parse(localStorage.getItem(key));
+        if (qData && qData.quests) {
+            activeQuests = qData.quests;
+            renderQuestHUD();
+        }
+    }
+
+    function renderQuestHUD() {
+        const container = document.getElementById('hud-quest-list');
+        container.innerHTML = activeQuests.map(q => {
+            const pct = Math.floor((q.progress / q.target) * 100);
+            return `<div class="hud-quest ${q.progress >= q.target ? 'completed' : 'active'}">
+                ${q.desc}<br>
+                <span style="font-size:0.6rem">[${q.progress}/${q.target}] ${pct}%</span>
+            </div>`;
+        }).join('');
+    }
+
+    function updateQuestProgress(type, amount) {
+        let changed = false;
+        activeQuests.forEach(q => {
+            if (q.progress < q.target) {
+                // Mapping logic
+                if (type === 'XP' && q.id === 'q2') { q.progress += amount; changed = true; }
+                if (type === 'BOSS' && q.id === 'q3') { q.progress += amount; changed = true; }
+                if (type === 'WIN' && q.id === 'q1') { q.progress += amount; changed = true; }
+            }
+        });
+
+        if (changed) {
+            // Save locally immediately
+            const key = `titan_quests_${currentUser}`;
+            const qData = JSON.parse(localStorage.getItem(key));
+            qData.quests = activeQuests;
+            localStorage.setItem(key, JSON.stringify(qData));
+            renderQuestHUD();
+        }
+    }
+    // ---------------------------
+
     window.addEventListener('keydown', (e) => {
         if (e.key === "F6" && !gameEnded) {
             playSound(1000, 'square', 0.5, 0.2);
@@ -149,15 +224,6 @@
             triggerBossFight();
         }
     });
-
-    // --- INITIALIZATION ---
-    function initGame() {
-        if (!currentUser) { window.location.href = "index.html"; return; }
-        document.getElementById('pilot-name').innerText = currentUser.toUpperCase();
-        initLayout();
-        initMatrix();
-        animateParticles();
-    }
 
     function initLayout() {
         const b = document.getElementById('board');
@@ -184,12 +250,12 @@
         el.dataset.id = id;
         el.onclick = () => {
             if (el.classList.contains('taken') || gameEnded || turn !== 1) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
             processMove(el, id);
         };
     }
 
     function processMove(el, id) {
-        if (audioCtx.state === 'suspended') audioCtx.resume();
         el.classList.add('taken', turn === 1 ? 'p1' : 'p2');
         linesTaken[id] = turn;
         playSound(turn === 1 ? 440 : 330, 'square', 0.1); 
@@ -297,10 +363,9 @@
             if(attacksLanded >= 15) showEscape(); 
         };
         document.getElementById('boss-overlay').appendChild(t);
-        setTimeout(() => t.remove(), 1500);
+        setTimeout(() => { if(t) t.remove(); }, 1500);
     }
 
-    // --- UPDATED WIN SYSTEM (Cloud Sync) ---
     async function showEscape() {
         ashMode = false;
         document.body.style.animation = "none";
@@ -308,55 +373,59 @@
         document.getElementById('info-panel').style.display = 'flex';
         playSound(1200, 'sine', 0.5, 0.2);
 
-        // 1. Calculate Rewards
-        const upgrades = JSON.parse(localStorage.getItem(`upgrades_${currentUser}`)) || {xp:0, coin:0};
-        const xpEarned = Math.floor(scores[1] * 10 * (1 + upgrades.xp * 0.1));
-        const coinsEarned = Math.floor(10 * (1 + upgrades.coin * 0.1));
+        // Update Quest: Boss Fight Complete
+        updateQuestProgress('BOSS', 1);
+
+        // 1. Calculate Rewards (WITH PRESTIGE MULTIPLIER)
+        let xpEarned = Math.floor((scores[1] * 10) * prestigeMult);
+        const coinsEarned = 20;
+
+        // Update Quest: XP Gained
+        updateQuestProgress('XP', xpEarned);
+        updateQuestProgress('WIN', 1);
 
         try {
-            // 2. Load current user data from Session
-            let data = JSON.parse(sessionStorage.getItem('titan_data')) || { level: 1, xp: 0, wins: 0, streak: 0, coins: 0 };
+            let data = JSON.parse(sessionStorage.getItem('titan_data')) || { level: 1, xp: 0, wins: 0, streak: 0 };
             
-            // 3. Update Stats
             data.wins = (data.wins || 0) + 1;
             data.streak = (data.streak || 0) + 1;
             data.xp += xpEarned;
-            data.coins = (data.coins || 0) + coinsEarned;
             
-            // 4. Level Up Logic (Matches Hub)
-            let xpNeeded = 100 + (data.level - 1) * 50;
-            while(data.xp >= xpNeeded && data.level < MAX_LEVEL) { 
-                data.xp -= xpNeeded; 
-                data.level++; 
-                xpNeeded = 100 + (data.level - 1) * 50;
+            // Level Loop
+            let nextLevelXP = 100 + (data.level - 1) * 50;
+            while (data.xp >= nextLevelXP && data.level < MAX_LEVEL) {
+                data.xp -= nextLevelXP; 
+                data.level++;           
+                nextLevelXP = 100 + (data.level - 1) * 50;
             }
 
-            // 5. Update UI
             document.getElementById('final-id').innerText = currentUser;
             document.getElementById('stat-lvl').innerText = data.level;
-            document.getElementById('stat-xp').innerText = `+${xpEarned}`;
+            document.getElementById('stat-xp').innerText = `+${xpEarned} (x${prestigeMult})`;
             document.getElementById('stat-coins').innerText = `+${coinsEarned}₮`;
 
-            // 6. SYNC TO CLOUD
-            if (typeof AccountSystem !== 'undefined') {
-                await AccountSystem.saveProgress(currentUser, data);
-            }
+            sessionStorage.setItem('titan_data', JSON.stringify(data));
+
+            await fetch(`${API_URL}/save`, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ username: currentUser, data: data }) 
+            });
+
+            const cRes = await fetch(`${API_URL}/get-coins/${currentUser}`);
+            const cData = await cRes.json();
+            const newCoinTotal = (cData.coins || 0) + coinsEarned;
+            
+            await fetch(`${API_URL}/update-coins`, { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'}, 
+                body: JSON.stringify({ username: currentUser, coins: newCoinTotal }) 
+            });
 
         } catch(e) { console.error("SYNC_ERROR: ", e); }
     }
 
-    function showLoss() { 
-        // Reset streak locally
-        let data = JSON.parse(sessionStorage.getItem('titan_data')) || { streak: 0 };
-        data.streak = 0;
-        sessionStorage.setItem('titan_data', JSON.stringify(data));
-        
-        ashMode = false; 
-        document.body.style.animation = "none"; 
-        document.getElementById('boss-overlay').style.display = 'none'; 
-        document.getElementById('loss-panel').style.display = 'flex'; 
-        playSound(80, 'sawtooth', 0.8, 0.3); 
-    }
+    function showLoss() { ashMode = false; document.body.style.animation = "none"; document.getElementById('boss-overlay').style.display = 'none'; document.getElementById('loss-panel').style.display = 'flex'; playSound(80, 'sawtooth', 0.8, 0.3); }
 
     function initMatrix() {
         const c = document.getElementById('bg-canvas'), x = c.getContext('2d');
@@ -368,9 +437,7 @@
             drops.forEach((d, i) => { x.fillText(Math.floor(Math.random()*2), i*20, d*20); if (d*20 > c.height && Math.random() > 0.975) drops[i] = 0; drops[i]++; });
         }, 50);
     }
-
     function explode(x, y, color) { for(let i=0; i<15; i++) { particles.push({ x, y, c: color, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, a: 1 }); } }
-    
     function animateParticles() {
         const c = document.getElementById('particle-canvas'), x = c.getContext('2d');
         c.width = window.innerWidth; c.height = window.innerHeight;

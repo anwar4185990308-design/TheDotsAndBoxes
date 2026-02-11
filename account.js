@@ -1,113 +1,82 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const path = require('path');
-const app = express();
+/**
+ * ACCOUNT.JS - Neural Link & Data Persistence System
+ */
 
-// --- PRE-START CONFIG ---
-app.use(express.json());
-app.use(cors());
-app.use(express.static(path.join(__dirname, './')));
+const AccountSystem = {
+    apiBase: window.location.origin,
 
-// --- DATABASE CONNECTION (With Error Handling) ---
-// REPLACE THIS STRING if not using Environment Variables
-const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://anamuyt66tt_db_user:wbEIKDFt6Fl8YSAO@cluster0.my8z8ya.mongodb.net/?appName=Cluster0";
+    async login(username, password) {
+        try {
+            const response = await fetch(`${this.apiBase}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const result = await response.json();
+            if (result.success) {
+                this.syncSession(username, result.data);
+                return { success: true };
+            }
+            return result;
+        } catch (e) {
+            return { success: false, message: "SERVER_OFFLINE: Wait 30s for Render to wake up." };
+        }
+    },
 
-mongoose.connect(MONGO_URI, {
-    serverSelectionTimeoutMS: 5000 // Give up after 5 seconds instead of hanging
-})
-.then(() => console.log(">> [SYSTEM]: DATABASE_LINK_SUCCESS"))
-.catch(err => {
-    console.error(">> [SYSTEM]: DATABASE_LINK_FAILURE");
-    console.error(err.message);
-});
+    async signup(username, password) {
+        try {
+            const response = await fetch(`${this.apiBase}/signup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const result = await response.json();
+            if (result.success) {
+                this.syncSession(username, result.data);
+                return { success: true };
+            }
+            return result;
+        } catch (e) {
+            return { success: false, message: "SERVER_OFFLINE: Wait 30s for Render to wake up." };
+        }
+    },
 
-// --- USER SCHEMA ---
-const userSchema = new mongoose.Schema({
-    username: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
-    files: {
-        levels: { type: Number, default: 1 },
-        coin: { type: Number, default: 500 },
-        wins: { type: Number, default: 0 },
-        streak: { type: Number, default: 0 },
-        xp: { type: Number, default: 0 }
+    async saveProgress(username, filesObject) {
+        if (!username || !filesObject) return false;
+        try {
+            const response = await fetch(`${this.apiBase}/save-progress`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, files: filesObject })
+            });
+            const result = await response.json();
+            if (result.success) {
+                // Update local storage to keep session in sync
+                this.syncSession(username, filesObject);
+                return true;
+            }
+            return false;
+        } catch (e) {
+            console.error("DATA_SYNC_LOST");
+            return false;
+        }
+    },
+
+    syncSession(username, files) {
+        sessionStorage.setItem('titan_user', username);
+        // Map DB 'files' keys to game 'data' keys
+        const localData = {
+            level: files.levels,
+            coins: files.coin,
+            wins: files.wins,
+            streak: files.streak,
+            xp: files.xp || 0
+        };
+        sessionStorage.setItem('titan_data', JSON.stringify(localData));
+    },
+
+    logout() {
+        sessionStorage.clear();
+        window.location.href = 'index.html';
     }
-}, { minimize: false });
-
-const User = mongoose.model('User', userSchema);
-
-// --- API ROUTES ---
-
-// Health Check (Use this to test if server is even awake)
-app.get('/ping', (req, res) => res.send('PONG'));
-
-// Leaderboard
-app.get('/leaderboard', async (req, res) => {
-    try {
-        const topPilots = await User.find({}, 'username files')
-            .sort({ "files.levels": -1, "files.wins": -1 })
-            .limit(10);
-        
-        const formatted = topPilots.map(p => ({
-            username: p.username,
-            level: p.files.levels,
-            wins: p.files.wins
-        }));
-        res.json(formatted);
-    } catch (err) {
-        res.status(500).json([]);
-    }
-});
-
-// Save System
-app.post('/save-progress', async (req, res) => {
-    const { username, files } = req.body;
-    if (!username || !files) return res.status(400).json({ success: false });
-
-    try {
-        await User.findOneAndUpdate(
-            { username: username },
-            { $set: { files: files } },
-            { new: true, upsert: true }
-        );
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ success: false });
-    }
-});
-
-// Auth: Login
-app.post('/login', async (req, res) => {
-    const { username, password } = req.body;
-    try {
-        const user = await User.findOne({ username, password });
-        if (user) res.json({ success: true, data: user.files });
-        else res.json({ success: false, message: "INVALID_CREDENTIALS" });
-    } catch (err) {
-        res.status(500).json({ success: false });
-    }
-});
-
-// Auth: Signup
-app.post('/signup', async (req, res) => {
-    const { username, password } = req.body;
-    try {
-        const newUser = new User({ username, password, files: { levels: 1, coin: 500, wins: 0, streak: 0, xp: 0 } });
-        await newUser.save();
-        res.json({ success: true, data: newUser.files });
-    } catch (err) {
-        res.json({ success: false, message: "USER_EXISTS" });
-    }
-});
-
-// Static Fallback
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// Start Server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`>> [SYSTEM]: TITAN_OS_ACTIVE ON PORT ${PORT}`);
-});
+};

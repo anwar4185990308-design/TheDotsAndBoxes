@@ -99,12 +99,14 @@
         </div>
     </div>
 
+<script src="account.js"></script>
+
 <script>
     // --- CONFIG & STATE ---
     const DOTS = 8;
     const boardSize = (DOTS-1) * (DOTS-1);
     const currentUser = sessionStorage.getItem('titan_user');
-    const API_URL = "http://localhost:3000";
+    const API_BASE = window.location.origin; 
     const MAX_LEVEL = 10000;
     
     let turn = 1; 
@@ -117,7 +119,7 @@
     let particles = [];
     let mySkin = localStorage.getItem(`skin_${currentUser}`) || "🔘";
 
-    // --- AUDIO SYSTEM (SYNTHETIC) ---
+    // --- AUDIO SYSTEM ---
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     function playSound(freq, type, duration, vol = 0.1) {
         const osc = audioCtx.createOscillator();
@@ -298,7 +300,7 @@
         setTimeout(() => t.remove(), 1500);
     }
 
-    // --- UPDATED WIN SYSTEM ---
+    // --- UPDATED WIN SYSTEM (Cloud Sync) ---
     async function showEscape() {
         ashMode = false;
         document.body.style.animation = "none";
@@ -312,52 +314,49 @@
         const coinsEarned = Math.floor(10 * (1 + upgrades.coin * 0.1));
 
         try {
-            // 2. Fetch current user data from Session
-            let data = JSON.parse(sessionStorage.getItem('titan_data')) || { level: 1, xp: 0, wins: 0, streak: 0 };
+            // 2. Load current user data from Session
+            let data = JSON.parse(sessionStorage.getItem('titan_data')) || { level: 1, xp: 0, wins: 0, streak: 0, coins: 0 };
             
-            // 3. Update Win Stats
+            // 3. Update Stats
             data.wins = (data.wins || 0) + 1;
             data.streak = (data.streak || 0) + 1;
             data.xp += xpEarned;
+            data.coins = (data.coins || 0) + coinsEarned;
             
-            // 4. Level Up Logic
-            while(data.xp >= (data.level * 100) && data.level < MAX_LEVEL) { 
-                data.xp -= (data.level * 100); 
+            // 4. Level Up Logic (Matches Hub)
+            let xpNeeded = 100 + (data.level - 1) * 50;
+            while(data.xp >= xpNeeded && data.level < MAX_LEVEL) { 
+                data.xp -= xpNeeded; 
                 data.level++; 
+                xpNeeded = 100 + (data.level - 1) * 50;
             }
 
-            // 5. Update UI Immediately
+            // 5. Update UI
             document.getElementById('final-id').innerText = currentUser;
             document.getElementById('stat-lvl').innerText = data.level;
             document.getElementById('stat-xp').innerText = `+${xpEarned}`;
             document.getElementById('stat-coins').innerText = `+${coinsEarned}₮`;
 
-            // 6. Save Updated Data to Session (Hub will use this)
-            sessionStorage.setItem('titan_data', JSON.stringify(data));
-
-            // 7. Sync to Server (Backend)
-            await fetch(`${API_URL}/save`, { 
-                method: 'POST', 
-                headers: {'Content-Type': 'application/json'}, 
-                body: JSON.stringify({ username: currentUser, data: data }) 
-            });
-
-            // 8. Update Credits/Coins in Backend
-            const cRes = await fetch(`${API_URL}/get-coins/${currentUser}`);
-            if (cRes.ok) {
-                const cData = await cRes.json();
-                const newCoinTotal = (cData.coins || 0) + coinsEarned;
-                await fetch(`${API_URL}/update-coins`, { 
-                    method: 'POST', 
-                    headers: {'Content-Type': 'application/json'}, 
-                    body: JSON.stringify({ username: currentUser, coins: newCoinTotal }) 
-                });
+            // 6. SYNC TO CLOUD
+            if (typeof AccountSystem !== 'undefined') {
+                await AccountSystem.saveProgress(currentUser, data);
             }
 
-        } catch(e) { console.error("WIN_SYSTEM_ERROR: ", e); }
+        } catch(e) { console.error("SYNC_ERROR: ", e); }
     }
 
-    function showLoss() { ashMode = false; document.body.style.animation = "none"; document.getElementById('boss-overlay').style.display = 'none'; document.getElementById('loss-panel').style.display = 'flex'; playSound(80, 'sawtooth', 0.8, 0.3); }
+    function showLoss() { 
+        // Reset streak locally
+        let data = JSON.parse(sessionStorage.getItem('titan_data')) || { streak: 0 };
+        data.streak = 0;
+        sessionStorage.setItem('titan_data', JSON.stringify(data));
+        
+        ashMode = false; 
+        document.body.style.animation = "none"; 
+        document.getElementById('boss-overlay').style.display = 'none'; 
+        document.getElementById('loss-panel').style.display = 'flex'; 
+        playSound(80, 'sawtooth', 0.8, 0.3); 
+    }
 
     function initMatrix() {
         const c = document.getElementById('bg-canvas'), x = c.getContext('2d');
@@ -369,7 +368,9 @@
             drops.forEach((d, i) => { x.fillText(Math.floor(Math.random()*2), i*20, d*20); if (d*20 > c.height && Math.random() > 0.975) drops[i] = 0; drops[i]++; });
         }, 50);
     }
+
     function explode(x, y, color) { for(let i=0; i<15; i++) { particles.push({ x, y, c: color, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, a: 1 }); } }
+    
     function animateParticles() {
         const c = document.getElementById('particle-canvas'), x = c.getContext('2d');
         c.width = window.innerWidth; c.height = window.innerHeight;

@@ -68,8 +68,17 @@
             margin-bottom: 15px; font-family: 'Fira Code'; font-size: 0.8rem;
             position: relative; transition: 0.3s;
         }
-        .quest-card.done { border-color: var(--gold); opacity: 0.6; text-decoration: line-through; }
+        .quest-card.done { border-color: var(--gold); opacity: 0.6; }
         .quest-reward { color: var(--gold); float: right; }
+
+        /* REROLL & CLAIM BUTTONS */
+        .action-btn {
+            width: 100%; padding: 12px; font-family: 'Orbitron'; font-size: 0.8rem; 
+            cursor: pointer; border: 1px solid; margin-top: 10px; transition: 0.3s;
+        }
+        .reroll-btn { background: transparent; border-color: #444; color: #888; }
+        .reroll-btn:hover { border-color: var(--blue); color: var(--blue); }
+        .claim-btn { background: var(--gold); color: black; border: none; font-weight: 900; box-shadow: 0 0 15px var(--gold); }
 
         /* PRESTIGE BUTTON */
         #prestige-box {
@@ -130,8 +139,8 @@
 
         <div class="quest-panel">
             <h3 style="font-family: 'Orbitron'; color: var(--blue); margin-top: 0;">DAILY_LOGS</h3>
-            <div id="quest-list">
-                </div>
+            <div id="quest-list"></div>
+            <div id="quest-actions"></div>
 
             <div id="prestige-box">
                 <div style="font-family: 'Fira Code'; font-size: 0.8rem; color: #888; margin-bottom: 10px;">NEURAL RESET REQUIRED LVL 100</div>
@@ -143,28 +152,41 @@
     <script src="account.js"></script>
     <script src="leaderboard.js"></script>
     <script>
-        // --- HUB LOGIC ---
+        // --- QUEST TEMPLATES (Generates 100+ Variations) ---
+        const ACTIONS = ["WIN", "EARN", "SECURE", "CONNECT", "OVERLOAD", "DRAIN"];
+        const TARGETS = ["DATA_NODES", "MATCHES", "XP_UNITS", "CREDIT_CELLS", "GRID_LINKS"];
         
+        function generateUniqueQuests(count = 3) {
+            let quests = [];
+            for(let i=0; i<count; i++) {
+                const act = ACTIONS[Math.floor(Math.random() * ACTIONS.length)];
+                const tar = TARGETS[Math.floor(Math.random() * TARGETS.length)];
+                const val = (Math.floor(Math.random() * 10) + 1) * 5;
+                quests.push({
+                    id: 'q_' + Math.random().toString(36).substr(2, 9),
+                    desc: `${act} ${val} ${tar}`,
+                    target: val,
+                    progress: 0,
+                    reward: val * 10
+                });
+            }
+            return quests;
+        }
+
+        // --- HUB LOGIC ---
         async function handleAuth() {
             const u = document.getElementById('username').value;
             const p = document.getElementById('password').value;
             const msg = document.getElementById('auth-msg');
-
             if(!u || !p) { msg.innerText = "INPUT_MISSING"; return; }
-
             msg.innerText = "AUTHENTICATING...";
             
-            // Try Login
             let res = await AccountSystem.login(u, p);
-            if (!res.success) {
-                // Try Signup if login fails
-                msg.innerText = "ID NOT FOUND. CREATING NEW PROFILE...";
-                res = await AccountSystem.signup(u, p);
-            }
+            if (!res.success) res = await AccountSystem.signup(u, p);
 
             if (res.success) {
                 sessionStorage.setItem('titan_user', u);
-                sessionStorage.setItem('titan_data', JSON.stringify(res.data || { level: 1, xp: 0, wins: 0, streak: 0, prestige: 0 }));
+                sessionStorage.setItem('titan_data', JSON.stringify(res.data || { level: 1, xp: 0, prestige: 0 }));
                 document.getElementById('auth-overlay').style.display = 'none';
                 initHub();
             } else {
@@ -174,104 +196,131 @@
 
         function initHub() {
             const user = sessionStorage.getItem('titan_user');
-            if(!user) return; // Stay on auth screen
-
+            if(!user) return;
             document.getElementById('auth-overlay').style.display = 'none';
             const data = JSON.parse(sessionStorage.getItem('titan_data'));
 
-            // Update Header
             document.getElementById('user-display').innerText = `PILOT: ${user.toUpperCase()}`;
             document.getElementById('user-lvl').innerText = data.level || 1;
             document.getElementById('user-prestige').innerText = data.prestige || 0;
             
-            fetchCoins(user); // Async fetch coins
+            fetchCoins(user);
             checkPrestigeStatus(data);
             initDailyQuests(user);
         }
 
         async function fetchCoins(user) {
-            try {
-                const res = await fetch(`${window.location.origin}/get-coins/${user}`);
-                const d = await res.json();
-                document.getElementById('user-credits').innerText = d.coins || 0;
-                
-                // Sync to session for Shop
-                let current = JSON.parse(sessionStorage.getItem('titan_data'));
-                current.coins = d.coins;
-                sessionStorage.setItem('titan_data', JSON.stringify(current));
-            } catch(e) { console.log("Coin sync failed"); }
+            const res = await fetch(`${window.location.origin}/get-coins/${user}`);
+            const d = await res.json();
+            document.getElementById('user-credits').innerText = d.coins || 0;
+            return d.coins || 0;
         }
 
-        // --- PRESTIGE SYSTEM ---
-        function checkPrestigeStatus(data) {
-            const box = document.getElementById('prestige-box');
-            if (data.level >= 100) {
-                box.classList.add('ready');
-                box.innerHTML = `<button class="prestige-btn" onclick="triggerPrestige()">⚠️ SYSTEM RESET ⚠️<br><span style="font-size:0.7rem">GAIN PERMANENT BUFF</span></button>`;
-            }
-        }
-
-        async function triggerPrestige() {
-            if(!confirm("WARNING: THIS WILL RESET YOUR LEVEL TO 1.\nYOUR SKINS AND COINS WILL BE SAVED.\nYOU WILL GAIN +1 PRESTIGE RANK.\n\nPROCEED?")) return;
-
-            const user = sessionStorage.getItem('titan_user');
-            let data = JSON.parse(sessionStorage.getItem('titan_data'));
-
-            // Apply Reset
-            data.level = 1;
-            data.xp = 0;
-            data.prestige = (data.prestige || 0) + 1;
-
-            // Save
-            sessionStorage.setItem('titan_data', JSON.stringify(data));
-            await AccountSystem.saveProgress(user, data);
-            location.reload();
-        }
-
-        // --- DAILY QUEST SYSTEM ---
+        // --- QUEST LOGIC ---
         function initDailyQuests(user) {
             const today = new Date().toDateString();
             const storageKey = `titan_quests_${user}`;
             let questData = JSON.parse(localStorage.getItem(storageKey));
 
-            // Generate new if missing or old date
             if (!questData || questData.date !== today) {
-                questData = {
-                    date: today,
-                    quests: [
-                        { id: 'q1', desc: 'WIN 3 MATCHES', target: 3, progress: 0, reward: 100 },
-                        { id: 'q2', desc: 'EARN 500 XP', target: 500, progress: 0, reward: 50 },
-                        { id: 'q3', desc: 'COMPLETE 1 BOSS FIGHT', target: 1, progress: 0, reward: 200 }
-                    ]
-                };
+                questData = { date: today, quests: generateUniqueQuests(), claimed: false };
                 localStorage.setItem(storageKey, JSON.stringify(questData));
             }
-
-            renderQuests(questData.quests);
+            renderQuests(questData);
         }
 
-        function renderQuests(quests) {
-            const container = document.getElementById('quest-list');
-            container.innerHTML = quests.map(q => {
+        async function rerollQuests() {
+            const user = sessionStorage.getItem('titan_user');
+            const currentCredits = await fetchCoins(user);
+            
+            if (currentCredits < 50) {
+                alert("INSUFFICIENT CREDITS: 50₮ REQUIRED");
+                return;
+            }
+
+            if (!confirm("REROLL LOGS? COST: 50₮")) return;
+
+            // Deduct Credits
+            await fetch(`${window.location.origin}/update-coins`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username: user, coins: currentCredits - 50 })
+            });
+
+            const storageKey = `titan_quests_${user}`;
+            const questData = { date: new Date().toDateString(), quests: generateUniqueQuests(), claimed: false };
+            localStorage.setItem(storageKey, JSON.stringify(questData));
+            initHub();
+        }
+
+        function renderQuests(questData) {
+            const list = document.getElementById('quest-list');
+            const actions = document.getElementById('quest-actions');
+            const allDone = questData.quests.every(q => q.progress >= q.target);
+
+            list.innerHTML = questData.quests.map(q => {
                 const isDone = q.progress >= q.target;
                 return `
                     <div class="quest-card ${isDone ? 'done' : ''}">
+                        <span class="quest-reward">${q.reward}₮</span>
                         <div>${q.desc}</div>
-                        <div style="font-size:0.7rem; color:#888; margin-top:5px;">
-                            PROGRESS: ${q.progress} / ${q.target}
-                            <span class="quest-reward">[+${q.reward}₮]</span>
-                        </div>
-                        <div style="height:2px; background:#333; margin-top:5px; width:100%;">
-                            <div style="height:100%; background:${isDone ? 'var(--gold)' : 'var(--blue)'}; width:${Math.min(100, (q.progress/q.target)*100)}%"></div>
+                        <div style="height:2px; background:#222; margin-top:10px;">
+                            <div style="height:100%; background:var(--blue); width:${(q.progress/q.target)*100}%"></div>
                         </div>
                     </div>
                 `;
             }).join('');
+
+            let actionHtml = '';
+            if (!questData.claimed) {
+                if (allDone) {
+                    actionHtml = `<button class="action-btn claim-btn" onclick="claimRewards()">CLAIM BUNDLE</button>`;
+                } else {
+                    actionHtml = `<button class="action-btn reroll-btn" onclick="rerollQuests()">REROLL LOGS (50₮)</button>`;
+                }
+            } else {
+                actionHtml = `<div style="text-align:center; color:var(--gold); font-size:0.8rem; margin-top:10px;">[ALL_LOGS_SECURED]</div>`;
+            }
+            actions.innerHTML = actionHtml;
         }
 
-        // Auto-Init if already logged in
-        if(sessionStorage.getItem('titan_user')) initHub();
+        async function claimRewards() {
+            const user = sessionStorage.getItem('titan_user');
+            const storageKey = `titan_quests_${user}`;
+            const questData = JSON.parse(localStorage.getItem(storageKey));
+            
+            const totalReward = questData.quests.reduce((sum, q) => sum + q.reward, 0);
+            const currentCredits = await fetchCoins(user);
 
+            await fetch(`${window.location.origin}/update-coins`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username: user, coins: currentCredits + totalReward })
+            });
+
+            questData.claimed = true;
+            localStorage.setItem(storageKey, JSON.stringify(questData));
+            alert(`REWARDS SYNCED: +${totalReward}₮`);
+            initHub();
+        }
+
+        // --- PRESTIGE SYSTEM ---
+        function checkPrestigeStatus(data) {
+            const box = document.getElementById('prestige-box');
+            if (data.level >= 100) { box.classList.add('ready'); }
+        }
+
+        async function triggerPrestige() {
+            if(!confirm("SYSTEM RESET: RETURN TO LVL 1 FOR PERMANENT PRESTIGE RANK?")) return;
+            const user = sessionStorage.getItem('titan_user');
+            let data = JSON.parse(sessionStorage.getItem('titan_data'));
+            data.level = 1; data.xp = 0; data.prestige = (data.prestige || 0) + 1;
+            sessionStorage.setItem('titan_data', JSON.stringify(data));
+            await AccountSystem.saveProgress(user, data);
+            location.reload();
+        }
+
+        if(sessionStorage.getItem('titan_user')) initHub();
     </script>
 </body>
 </html>
